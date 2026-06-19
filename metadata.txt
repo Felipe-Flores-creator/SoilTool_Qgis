@@ -1,0 +1,17 @@
+[general]
+name=SoilTool
+description=Interactive soil profile visualization tool for QGIS.
+about=Scientific tool for visualising and managing soil profiles directly in QGIS vector layers. It allows adding horizons with custom properties like texture, color, and boundaries. No external Python libraries required.
+version=1.0.4
+qgisMinimumVersion=3.0
+author=Felipe Flores
+email=felipe.ignacio.geo@gmail.com
+homepage=https://github.com/Felipe-Flores-creator
+repository=https://github.com/Felipe-Flores-creator/SoilTool_Qgis
+tracker=https://github.com/Felipe-Flores-creator/SoilTool_Qgis/issues
+experimental=False
+category=Vector
+tags=soil, pedology, profile, scientific, edaphology
+icon=resources/icon.svg
+license=GPLv2
+license_file=LICENSE

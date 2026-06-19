@@ -23,7 +23,7 @@ from qgis.PyQt.QtWidgets import (
     QWidget,
 )
 from qgis.PyQt.QtGui import QColor, QIntValidator
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import Qt, QTimer
 
 from ..core.profile_engine import HorizonData
 from ..core.materials import (
@@ -56,8 +56,9 @@ class HorizonDialog(QDialog):
         self.setWindowTitle("Editar Horizonte" if self.horizon else "Nuevo Horizonte")
         self.setModal(True)
         self.setMinimumWidth(400)
-        # Establecer tamaño inicial razonable para que la barra de scroll sea efectiva en pantallas pequeñas
+        # Tamaño inicial: al abrir, asegurar que el layout/scroll se "calcule" y se vea completo
         self.resize(420, 500)
+        self.setSizeGripEnabled(True)
 
         layout = QVBoxLayout()
         layout.setSpacing(10)
@@ -215,6 +216,17 @@ class HorizonDialog(QDialog):
         layout.addWidget(button_box)
 
         self.setLayout(layout)
+
+        # Forzar recalculo del layout inmediatamente para evitar que al abrir
+        # el formulario se vea "recortado" (especialmente con QScrollArea).
+        self.adjustSize()
+        self.layout().activate()
+        # Segundo "pulse" al event loop para que QScrollArea y el QFormLayout
+        # recalculen correctamente al abrir el diálogo.
+        QTimer.singleShot(0, self.adjustSize)
+
+        # Nota: populate_from_horizon (si aplica) ocurre después del setup_ui()
+        # para que el layout inicial ya esté correctamente renderizado.
 
     def _on_unit_changed(self, unit):
         """Cambia entre cm y m, ajustando suffix y factor de escala."""

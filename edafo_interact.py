@@ -29,6 +29,12 @@ class SoilTool:
         self.iface.addToolBarIcon(self.action)
         self.iface.addPluginToMenu("&SoilTool", self.action)
 
+        # Primer arranque: dejar abierto únicamente el panel "Editor de Perfil"
+        # sin modificar el resto del flujo/lógica del plugin.
+        if not self.action.isChecked():
+            QTimer.singleShot(0, lambda: self.action.setChecked(True))
+            QTimer.singleShot(0, lambda: self.toggle_map_tool(True))
+
     def unload(self):
         # Limpiar la herramienta de mapa
         if self.map_tool:

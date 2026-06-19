@@ -203,6 +203,8 @@ class ProfilePanel(QWidget):
         select_map_layout = QHBoxLayout()
         import os
 
+        # Usa el ícono existente (no se crea un nuevo archivo) para mantener la funcionalidad
+        # del botón sin modificar la lógica del tool.
         crosshair_path = os.path.join(
             os.path.dirname(os.path.dirname(__file__)), "resources", "crosshair.svg"
         )
@@ -281,10 +283,10 @@ class ProfilePanel(QWidget):
         # Acciones de plantilla
         template_layout = QHBoxLayout()
         self.save_template_button = QPushButton("Guardar como Plantilla")
-        self.save_template_button.setFixedHeight(28)
+        self.save_template_button.setFixedHeight(31)
         self.save_template_button.clicked.connect(self.save_layer_template)
         self.apply_template_button = QPushButton("Aplicar")
-        self.apply_template_button.setFixedHeight(28)
+        self.apply_template_button.setFixedHeight(31)
         self.apply_template_button.clicked.connect(self.apply_layer_template)
         template_layout.addWidget(self.save_template_button)
         template_layout.addWidget(self.apply_template_button)
@@ -292,16 +294,16 @@ class ProfilePanel(QWidget):
 
         horiz_actions_layout = QHBoxLayout()
         self.add_button = QPushButton("Añadir")
-        self.add_button.setFixedHeight(28)
+        self.add_button.setFixedHeight(31)
         self.add_button.clicked.connect(self.add_horizon)
         self.edit_button = QPushButton("Editar")
-        self.edit_button.setFixedHeight(28)
+        self.edit_button.setFixedHeight(31)
         self.edit_button.clicked.connect(self.edit_selected_horizon)
         self.delete_button = QPushButton("Eliminar")
-        self.delete_button.setFixedHeight(28)
+        self.delete_button.setFixedHeight(31)
         self.delete_button.clicked.connect(self.delete_selected_horizon)
         self.clear_button = QPushButton("Limpiar")
-        self.clear_button.setFixedHeight(28)
+        self.clear_button.setFixedHeight(31)
         self.clear_button.clicked.connect(self.clear_all_horizons)
 
         horiz_actions_layout.addWidget(self.add_button)
@@ -316,7 +318,7 @@ class ProfilePanel(QWidget):
 
         # Botón de Guardado Explícito (Prioridad según requerimiento)
         self.save_profile_button = QPushButton("Guardar Perfil")
-        self.save_profile_button.setFixedHeight(28)
+        self.save_profile_button.setFixedHeight(31)
         self.save_profile_button.setStyleSheet(
             """
             QPushButton {
@@ -324,7 +326,7 @@ class ProfilePanel(QWidget):
                 color: white;
                 font-size: 10px;
                 font-weight: bold;
-                padding: 4px 10px;
+                padding: 2px 10px;
                 border-radius: 4px;
                 margin: 4px 0;
             }
@@ -342,12 +344,12 @@ class ProfilePanel(QWidget):
         # Acciones de Exportación
         export_layout = QHBoxLayout()
         self.export_img_button = QPushButton("Exportar")
-        self.export_img_button.setFixedHeight(28)
+        self.export_img_button.setFixedHeight(31)
         self.export_img_button.setToolTip("Exporta el perfil actual como PNG")
         self.export_img_button.clicked.connect(self.export_profile_image)
 
         self.pdf_report_button = QPushButton("PDF")
-        self.pdf_report_button.setFixedHeight(28)
+        self.pdf_report_button.setFixedHeight(31)
         self.pdf_report_button.setToolTip(
             "Genera un informe PDF nativo de toda la capa"
         )

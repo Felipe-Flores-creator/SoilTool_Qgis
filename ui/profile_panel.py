@@ -725,7 +725,12 @@ class ProfilePanel(QWidget):
         # Actualizar profundidad total
         if self.horizons:
             max_depth = max(h.bottom for h in self.horizons)
-            self.depth_label.setText(f"Profundidad total: {max_depth:.1f} cm")
+            if max_depth >= 100:
+                self.depth_label.setText(
+                    f"Profundidad total: {max_depth / 100:.2f} m ({max_depth:g} cm)"
+                )
+            else:
+                self.depth_label.setText(f"Profundidad total: {max_depth:.1f} cm")
         else:
             self.depth_label.setText("Profundidad total: 0 cm")
 

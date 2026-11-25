@@ -30,6 +30,9 @@ from ..core.materials import (
     is_material_predefined,
 )
 
+# Profundidad máxima admitida: 10 km (en cm)
+MAX_DEPTH_CM = 1_000_000
+
 
 class HorizonDialog(QDialog):
     """Diálogo para crear o editar un horizonte de suelo."""
@@ -89,7 +92,7 @@ class HorizonDialog(QDialog):
 
         # Profundidad superior
         self.top_spin = QDoubleSpinBox()
-        self.top_spin.setRange(0, 10000)
+        self.top_spin.setRange(0, MAX_DEPTH_CM)
         self.top_spin.setSuffix(" cm")
         self.top_spin.setDecimals(1)
         self.top_spin.setValue(0)
@@ -97,7 +100,7 @@ class HorizonDialog(QDialog):
 
         # Altura (Espesor)
         self.height_spin = QDoubleSpinBox()
-        self.height_spin.setRange(0, 10000)
+        self.height_spin.setRange(0, MAX_DEPTH_CM)
         self.height_spin.setSuffix(" cm")
         self.height_spin.setDecimals(1)
         self.height_spin.setValue(30)
@@ -105,7 +108,7 @@ class HorizonDialog(QDialog):
 
         # Profundidad inferior
         self.bottom_spin = QDoubleSpinBox()
-        self.bottom_spin.setRange(0, 10000)
+        self.bottom_spin.setRange(0, MAX_DEPTH_CM)
         self.bottom_spin.setSuffix(" cm")
         self.bottom_spin.setDecimals(1)
         self.bottom_spin.setValue(30)
@@ -233,33 +236,25 @@ class HorizonDialog(QDialog):
         # para que el layout inicial ya esté correctamente renderizado.
 
     def _on_unit_changed(self, unit):
-        """Cambia entre cm y m, ajustando suffix y factor de escala."""
+        """Cambia entre cm y m convirtiendo los valores sin perder precisión."""
         self._syncing = True
-        if unit == "m":
-            # Convertir valores actuales de cm a m
-            self.top_spin.setValue(self.top_spin.value() / 100.0)
-            self.height_spin.setValue(self.height_spin.value() / 100.0)
-            self.bottom_spin.setValue(self.bottom_spin.value() / 100.0)
-            self.top_spin.setSuffix(" m")
-            self.height_spin.setSuffix(" m")
-            self.bottom_spin.setSuffix(" m")
-            self.top_spin.setDecimals(2)
-            self.height_spin.setDecimals(2)
-            self.bottom_spin.setDecimals(2)
-            self._unit_is_meters = True
-        else:
-            # Convertir valores actuales de m a cm
-            self.top_spin.setValue(self.top_spin.value() * 100.0)
-            self.height_spin.setValue(self.height_spin.value() * 100.0)
-            self.bottom_spin.setValue(self.bottom_spin.value() * 100.0)
-            self.top_spin.setSuffix(" cm")
-            self.height_spin.setSuffix(" cm")
-            self.bottom_spin.setSuffix(" cm")
-            self.top_spin.setDecimals(1)
-            self.height_spin.setDecimals(1)
-            self.bottom_spin.setDecimals(1)
-            self._unit_is_meters = False
+        spins = (self.top_spin, self.height_spin, self.bottom_spin)
+        values = [sp.value() for sp in spins]
+        to_m = unit == "m"
+        if to_m == self._unit_is_meters:
+            self._syncing = False
+            return
+        for sp, v in zip(spins, values):
+            # Primero decimales y sufijo; luego el valor (si no, se redondea)
+            sp.setDecimals(3 if to_m else 1)
+            sp.setSuffix(" m" if to_m else " cm")
+            sp.setValue(v / 100.0 if to_m else v * 100.0)
+        self._unit_is_meters = to_m
         self._syncing = False
+
+    def _to_cm(self, value):
+        """Valor de un campo de profundidad expresado en cm."""
+        return round(value * 100.0, 4) if self._unit_is_meters else value
 
     def _sync_from_top(self, val):
         """Sincroniza el fondo basado en el tope y la altura."""
@@ -336,6 +331,10 @@ class HorizonDialog(QDialog):
         self.fault_displacement_spin.setValue(horizon.fault_displacement)
         self.inclination_spin.setValue(getattr(horizon, "inclination", 0))
 
+        # Horizontes/estratos de 10 m o más se muestran en metros
+        if horizon.bottom >= 1000:
+            self.unit_combo.setCurrentText("m")
+
     def get_horizon(self):
         """
         Obtiene los datos del horizonte desde el diálogo.
@@ -343,12 +342,14 @@ class HorizonDialog(QDialog):
         Returns:
             HorizonData: El horizonte creado o editado
         """
+        # Las profundidades se guardan SIEMPRE en cm (unidad interna del plugin);
+        # si el diálogo está en metros, se convierten aquí.
+        top = self._to_cm(self.top_spin.value())
+        bottom = self._to_cm(self.bottom_spin.value())
+
         name = self.name_edit.text().strip()
         if not name:
-            name = f"H{int(self.top_spin.value())}-{int(self.bottom_spin.value())}"
-
-        top = self.top_spin.value()
-        bottom = self.bottom_spin.value()
+            name = f"H{int(top)}-{int(bottom)}"
 
         # Obtener material (puede ser personalizado)
         material = self.material_combo.currentText().strip()
@@ -386,6 +387,6 @@ class HorizonDialog(QDialog):
         # Solo aseguramos que el nombre no sea completamente nulo para evitar
         # errores de visualización.
         if not self.name_edit.text().strip():
-            self.name_edit.setText(f"H {self.top_spin.value()}")
+            self.name_edit.setText(f"H {self._to_cm(self.top_spin.value()):g}")
 
         super().accept()

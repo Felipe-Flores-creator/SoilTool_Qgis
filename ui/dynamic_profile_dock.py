@@ -24,6 +24,7 @@ from qgis.PyQt.QtWidgets import (
     QDockWidget,
     QDoubleSpinBox,
     QFileDialog,
+    QBoxLayout,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -161,8 +162,13 @@ class DynamicProfileDock(QDockWidget):
         self.map_crs = None
         self.total_m = 0.0
         self.map_tool = None
-        self.setAllowedAreas(
-            Qt.DockWidgetArea.TopDockWidgetArea | Qt.DockWidgetArea.BottomDockWidgetArea
+        # Acoplable en cualquier borde: si se separa, puede volver a anexarse
+        # abajo, arriba o a un costado
+        self.setAllowedAreas(Qt.DockWidgetArea.AllDockWidgetAreas)
+        self.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetClosable
+            | QDockWidget.DockWidgetFeature.DockWidgetMovable
+            | QDockWidget.DockWidgetFeature.DockWidgetFloatable
         )
         self.setMinimumHeight(170)
 
@@ -188,8 +194,27 @@ class DynamicProfileDock(QDockWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        self._relayout_bar()
         if self.points_data:
             self._resize_timer.start()
+
+    def _relayout_bar(self):
+        """Una línea si hay espacio; dos (capas arriba, acciones abajo) si no."""
+        if not hasattr(self, "_bar_box"):
+            return
+        one_line = (
+            self._row_a_w.minimumSizeHint().width()
+            + self._row_b_w.minimumSizeHint().width()
+            + 160  # holgura para que los selectores de capa sigan legibles
+        )
+        narrow = self.width() < one_line
+        if narrow != self._narrow:
+            self._narrow = narrow
+            self._bar_box.setDirection(
+                QBoxLayout.Direction.TopToBottom
+                if narrow
+                else QBoxLayout.Direction.LeftToRight
+            )
 
     def _replot_if_data(self):
         if self.points_data:
@@ -209,7 +234,13 @@ class DynamicProfileDock(QDockWidget):
         lay.setContentsMargins(4, 3, 4, 0)
         lay.setSpacing(2)
 
+        # Fila A: capas · Fila B: acciones. En paneles anchos van en una sola
+        # línea; en angostos (p. ej. acoplado a un costado) la fila B baja.
+        row_a = QHBoxLayout()
+        row_a.setContentsMargins(0, 0, 0, 0)
+        row_a.setSpacing(4)
         bar = QHBoxLayout()
+        bar.setContentsMargins(0, 0, 0, 0)
         bar.setSpacing(4)
 
         def combo_layers(filt, tip):
@@ -219,20 +250,20 @@ class DynamicProfileDock(QDockWidget):
             c.setSizeAdjustPolicy(
                 QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
             )
-            c.setMinimumContentsLength(8)
+            c.setMinimumContentsLength(6)
             c.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             return c
 
-        bar.addWidget(QLabel("DEM"))
+        row_a.addWidget(QLabel("DEM"))
         self.dem_combo = combo_layers(
             QgsMapLayerProxyModel.RasterLayer, "Modelo digital de elevación"
         )
-        bar.addWidget(self.dem_combo, 2)
-        bar.addWidget(QLabel("Suelos"))
+        row_a.addWidget(self.dem_combo, 2)
+        row_a.addWidget(QLabel("Suelos"))
         self.soils_combo = combo_layers(
             QgsMapLayerProxyModel.PolygonLayer, "Capa de unidades de suelo"
         )
-        bar.addWidget(self.soils_combo, 2)
+        row_a.addWidget(self.soils_combo, 2)
 
         self.draw_btn = QPushButton("✏ Trazar")
         self.draw_btn.setCheckable(True)
@@ -351,7 +382,18 @@ class DynamicProfileDock(QDockWidget):
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
         )
         bar.addWidget(self.status_label, 3)
-        lay.addLayout(bar)
+
+        self._row_a_w = QWidget()
+        self._row_a_w.setLayout(row_a)
+        self._row_b_w = QWidget()
+        self._row_b_w.setLayout(bar)
+        self._bar_box = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        self._bar_box.setContentsMargins(0, 0, 0, 0)
+        self._bar_box.setSpacing(4)
+        self._bar_box.addWidget(self._row_a_w, 4)
+        self._bar_box.addWidget(self._row_b_w, 5)
+        lay.addLayout(self._bar_box)
+        self._narrow = False
 
         for combo in (self.soil_exag_combo, self.ve_combo, self.unit_combo):
             combo.currentIndexChanged.connect(self.plot_profile)
@@ -902,10 +944,16 @@ class DynamicProfileDock(QDockWidget):
         x_left = self.figure.subplotpars.left
         head = offset_copy(fig.transFigure, fig=fig, y=-5, units="points")
         if compact:
-            short = (
-                f"Perfil topográfico  ·  {self._fmt_len(self.total_m)}  ·  "
-                f"desnivel {relief:.1f} m  ·  pend. media {stats['mean']:.1f} %"
-            )
+            length_txt = self._fmt_len(self.total_m)
+            if fig_w_avail >= 620:
+                short = (
+                    f"Perfil topográfico  ·  {length_txt}  ·  "
+                    f"desnivel {relief:.1f} m  ·  pend. media {stats['mean']:.1f} %"
+                )
+            elif fig_w_avail >= 420:
+                short = f"Perfil  ·  {length_txt}  ·  desnivel {relief:.1f} m"
+            else:
+                short = f"{length_txt}  ·  Δ {relief:.1f} m"
             fig.text(
                 x_left,
                 1.0,

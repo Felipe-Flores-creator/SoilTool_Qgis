@@ -95,10 +95,7 @@ class SoilTool:
             )
             dock_editor.setObjectName("SoilToolEditorDock")
             dock_editor.setWidget(self.panel)
-            dock_editor.setAllowedAreas(
-                Qt.DockWidgetArea.LeftDockWidgetArea
-                | Qt.DockWidgetArea.RightDockWidgetArea
-            )
+            dock_editor.setAllowedAreas(Qt.DockWidgetArea.AllDockWidgetAreas)
             self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock_editor)
             self.docks.append(dock_editor)
             self.panel.dock_editor = dock_editor
@@ -108,10 +105,7 @@ class SoilTool:
             dock_canvas = QDockWidget("SoilTool - Lienzo 2D", self.iface.mainWindow())
             dock_canvas.setObjectName("SoilToolCanvasDock")
             dock_canvas.setWidget(self.panel.canvas_widget)
-            dock_canvas.setAllowedAreas(
-                Qt.DockWidgetArea.LeftDockWidgetArea
-                | Qt.DockWidgetArea.RightDockWidgetArea
-            )
+            dock_canvas.setAllowedAreas(Qt.DockWidgetArea.AllDockWidgetAreas)
             self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock_canvas)
             self.docks.append(dock_canvas)
             self.panel.dock_canvas = dock_canvas
@@ -125,10 +119,7 @@ class SoilTool:
             )
             dock_explorer.setObjectName("SoilToolExplorerDock")
             dock_explorer.setWidget(self.panel.explorer_widget)
-            dock_explorer.setAllowedAreas(
-                Qt.DockWidgetArea.LeftDockWidgetArea
-                | Qt.DockWidgetArea.RightDockWidgetArea
-            )
+            dock_explorer.setAllowedAreas(Qt.DockWidgetArea.AllDockWidgetAreas)
             self.iface.addDockWidget(
                 Qt.DockWidgetArea.RightDockWidgetArea, dock_explorer
             )

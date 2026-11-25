@@ -365,7 +365,13 @@ Por favor reporta errores en: https://github.com/Felipe-Flores-creator/SoilTool_
 
 ## 🔄 Historial de Versiones
 
-### v1.0.5 (Actual)
+### v1.1.0 (Actual)
+- ✅ Lápiz en el Lienzo 2D para editar a mano la forma de los límites entre horizontes
+- ✅ Vista previa del cursor como miniperfil rectangular con colores y patrones
+- ✅ Informe PDF profesional: mapa de ubicación de perfiles, ficha por perfil con
+  columna, localización, tabla de horizontes y simbología edafológica/estratigráfica
+
+### v1.0.5
 - ✅ Compatible con QGIS 4 (Qt6) y QGIS 3
 - ✅ Corregido congelamiento al agrupar paneles en pestañas
 - ✅ Corregido muestreo del DEM en el perfil topográfico

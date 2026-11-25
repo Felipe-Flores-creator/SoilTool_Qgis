@@ -19,7 +19,10 @@ from qgis.PyQt.QtWidgets import (
     QTextEdit,
     QFileDialog,
     QMainWindow,
+    QToolButton,
+    QApplication,
 )
+import os
 from qgis.PyQt.QtGui import QColor, QIcon
 from qgis.PyQt.QtCore import Qt, pyqtSignal, QSize, QEvent, QObject, QTimer
 from qgis.utils import iface
@@ -152,12 +155,20 @@ class ProfilePanel(QWidget):
 
     def setup_ui(self):
         """Configura la interfaz de usuario dividida en componentes separados."""
-        # --- 1. LIENZO 2D (CANVAS) ---
-        self.canvas_widget = QScrollArea()
-        self.canvas_widget.setWidgetResizable(True)
-        self.canvas_widget.setMinimumHeight(250)
+        # --- 1. LIENZO 2D (CANVAS) con barra de edición manual (lápiz) ---
         self.canvas = EdafoCanvas()
-        self.canvas_widget.setWidget(self.canvas)
+        self.canvas_scroll = QScrollArea()
+        self.canvas_scroll.setWidgetResizable(True)
+        self.canvas_scroll.setMinimumHeight(250)
+        self.canvas_scroll.setWidget(self.canvas)
+
+        self.canvas_widget = QWidget()
+        canvas_layout = QVBoxLayout(self.canvas_widget)
+        canvas_layout.setContentsMargins(0, 0, 0, 0)
+        canvas_layout.setSpacing(2)
+        canvas_layout.addWidget(self._build_shape_toolbar())
+        canvas_layout.addWidget(self.canvas_scroll)
+        self.canvas.shapeEdited.connect(self.on_shape_edited)
 
         # --- 2. EDITOR DE PERFIL (Este propio widget) ---
         self.scroll_area = QScrollArea(self)
@@ -200,7 +211,6 @@ class ProfilePanel(QWidget):
 
         # Botón para activar el seleccionador en mapa (solo ícono)
         select_map_layout = QHBoxLayout()
-        import os
 
         # Usa el ícono existente (no se crea un nuevo archivo) para mantener
         # la funcionalidad
@@ -486,6 +496,87 @@ class ProfilePanel(QWidget):
         layer = data["layer"]
         self.set_feature(feature, layer)
 
+    # ------------------------------------------------------------------
+    # Edición manual de forma (lápiz) en el Lienzo 2D
+    # ------------------------------------------------------------------
+    def _build_shape_toolbar(self):
+        """Barra sobre el Lienzo 2D: lápiz, deshacer, restablecer y ayuda."""
+        bar = QWidget()
+        bar.setStyleSheet(
+            "QWidget#shapeBar { background: #efebe9;"
+            " border-bottom: 1px solid #d7ccc8; }"
+            "QToolButton { padding: 3px 6px; border-radius: 3px; }"
+            "QToolButton:checked { background: #ffcc80; border: 1px solid #ef6c00; }"
+        )
+        bar.setObjectName("shapeBar")
+        lay = QHBoxLayout(bar)
+        lay.setContentsMargins(4, 2, 4, 2)
+        lay.setSpacing(4)
+
+        res_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "resources")
+        self.shape_edit_button = QToolButton()
+        self.shape_edit_button.setIcon(QIcon(os.path.join(res_dir, "pencil.svg")))
+        self.shape_edit_button.setIconSize(QSize(18, 18))
+        self.shape_edit_button.setCheckable(True)
+        self.shape_edit_button.setToolTip(
+            "Editar forma de los horizontes (lápiz)\n"
+            "• Arrastra un punto para estirar el límite\n"
+            "• Shift + arrastrar: mueve el límite completo\n"
+            "• Doble clic en un punto: lo restablece"
+        )
+        self.shape_edit_button.toggled.connect(self.on_shape_edit_toggled)
+
+        self.shape_undo_button = QToolButton()
+        self.shape_undo_button.setText("↶ Deshacer")
+        self.shape_undo_button.setToolTip("Deshace la última edición de forma")
+        self.shape_undo_button.clicked.connect(self.canvas.undo_shape)
+
+        self.shape_reset_button = QToolButton()
+        self.shape_reset_button.setText("Restablecer forma")
+        self.shape_reset_button.setToolTip(
+            "Quita todas las formas manuales y vuelve a la forma automática"
+        )
+        self.shape_reset_button.clicked.connect(self.canvas.reset_shapes)
+
+        self.shape_hint_label = QLabel(
+            "Arrastra los puntos · Shift: límite completo · Doble clic: restablecer"
+        )
+        self.shape_hint_label.setStyleSheet("color: #6d4c41; font-size: 10px;")
+        self.shape_hint_label.setVisible(False)
+
+        lay.addWidget(self.shape_edit_button)
+        lay.addWidget(self.shape_undo_button)
+        lay.addWidget(self.shape_reset_button)
+        lay.addWidget(self.shape_hint_label, 1)
+        self._update_shape_buttons()
+        return bar
+
+    def on_shape_edit_toggled(self, checked):
+        self.canvas.set_edit_mode(checked)
+        self.shape_hint_label.setVisible(checked)
+        self._update_shape_buttons()
+
+    def on_shape_edited(self):
+        """La forma cambió con el lápiz: marcar cambios sin guardar."""
+        self._set_unsaved(True)
+        self._update_shape_buttons()
+        self.horizonsChanged.emit(self.horizons)
+
+    def _update_shape_buttons(self):
+        has_horizons = bool(self.canvas.horizons)
+        self.shape_edit_button.setEnabled(has_horizons)
+        self.shape_undo_button.setEnabled(has_horizons and self.canvas.can_undo())
+        self.shape_reset_button.setEnabled(has_horizons and self.canvas.has_shapes())
+        if not has_horizons and self.shape_edit_button.isChecked():
+            self.shape_edit_button.setChecked(False)
+
+    def _set_unsaved(self, unsaved):
+        if not hasattr(self, "save_profile_button"):
+            return
+        self.save_profile_button.setText(
+            "Guardar Perfil  •  cambios sin guardar" if unsaved else "Guardar Perfil"
+        )
+
     def set_feature(self, feature, layer):
         """
         Establece el feature actual y carga sus horizontes.
@@ -527,6 +618,7 @@ class ProfilePanel(QWidget):
             )
             self.profile_id_edit.setText(str(profile_id) if profile_id != -1 else "")
             self.profile_desc_edit.setPlainText(description)
+            self._set_unsaved(False)
         else:
             self.feature_info_label.setText("Ninguna entidad seleccionada")
             self.horizons = []
@@ -651,6 +743,7 @@ class ProfilePanel(QWidget):
         self.save_profile_button.setEnabled(has_feature)
         self.export_img_button.setEnabled(has_horizons)
         self.pdf_report_button.setEnabled(self.current_layer is not None)
+        self._update_shape_buttons()
 
     def add_horizon(self):
         """Abre el diálogo para añadir un nuevo horizonte."""
@@ -714,6 +807,7 @@ class ProfilePanel(QWidget):
 
         if dialog.exec() == HorizonDialog.DialogCode.Accepted:
             new_horizon = dialog.get_horizon()
+            new_horizon.copy_shape_from(self.horizons[index])
             self.horizons[index] = new_horizon
 
             # Re-encadenar todo si está activo
@@ -881,6 +975,7 @@ class ProfilePanel(QWidget):
             if fresh.isValid():
                 self.current_feature = fresh
 
+            self._set_unsaved(False)
             QMessageBox.information(
                 self,
                 "Perfil Guardado",
@@ -1052,9 +1147,22 @@ class ProfilePanel(QWidget):
             # Guardar el feature actual para restaurarlo después
             original_feature = self.current_feature
 
-            success, message = ReportGenerator.generate_pdf_report(
-                self.current_layer, self.canvas, file_path
-            )
+            # El perfil abierto en el editor se exporta tal como se ve (incluye
+            # formas editadas con el lápiz aunque aún no se hayan guardado)
+            overrides = {}
+            if self.current_feature is not None and self.horizons:
+                overrides[self.current_feature.id()] = (
+                    self.profile_id_edit.text().strip() or -1,
+                    self.profile_desc_edit.toPlainText().strip(),
+                    list(self.horizons),
+                )
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                success, message = ReportGenerator.generate_pdf_report(
+                    self.current_layer, self.canvas, file_path, overrides=overrides
+                )
+            finally:
+                QApplication.restoreOverrideCursor()
 
             # Restaurar el feature original en el panel y canvas
             if original_feature:

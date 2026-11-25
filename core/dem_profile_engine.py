@@ -732,6 +732,7 @@ class DEMProfileEngine:
                         image_path=horizon.image_path,
                         inclination=horizon.inclination,
                     )
+                    h_copy.copy_shape_from(horizon)
                     h_copy.depth_top = horizon.top
                     h_copy.depth_bottom = horizon.bottom
                     h_copy.surface_elevation = point.elevation

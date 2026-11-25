@@ -10,11 +10,21 @@ from qgis.PyQt.QtGui import (
     QLinearGradient,
     QPixmap,
 )
-from qgis.PyQt.QtCore import Qt, QRectF
-from ..core.profile_engine import ProfileGeometry
+from qgis.PyQt.QtCore import Qt, QRectF, QPointF, pyqtSignal
+from ..core.profile_engine import ProfileGeometry, SHAPE_POINTS, normalize_offsets
+
+# Límite de desplazamiento manual de un punto (cm)
+MAX_SHAPE_OFFSET_CM = 300.0
+HANDLE_RADIUS = 5
+HANDLE_HIT_RADIUS = 9
 
 
 class EdafoCanvas(QWidget):
+    # Se emite al terminar una edición manual de forma (lápiz)
+    shapeEdited = pyqtSignal()
+    # Se emite al activar/desactivar el modo lápiz
+    editModeChanged = pyqtSignal(bool)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.horizons = []
@@ -24,11 +34,269 @@ class EdafoCanvas(QWidget):
         self.show_fault_line = False  # Control de visibilidad del plano de falla
         # Caché de geometría: se calcula una vez y se reutiliza en cada paintEvent
         self._cached_paths = []  # lista de (QPainterPath, HorizonData)
+        self._boundaries = (
+            []
+        )  # límites calculados (superficie + base de cada horizonte)
         self._cache_width = -1  # ancho con el que se calculó el caché
         # Bandera para evitar recursión de paint events
         self._in_paint_event = False
         # Offset vertical de scroll (para panorámica con arrastre)
         self._scroll_offset = 0
+        # --- Edición manual de forma (lápiz) ---
+        self.edit_mode = False
+        self._hover = None  # (índice de límite, índice de punto)
+        self._drag = None  # dict con el estado del arrastre
+        self._undo_stack = []
+
+    # ------------------------------------------------------------------
+    # Edición manual de forma (lápiz)
+    # ------------------------------------------------------------------
+    def set_edit_mode(self, enabled):
+        """Activa o desactiva el modo lápiz (arrastrar límites)."""
+        self.edit_mode = bool(enabled)
+        self.setMouseTracking(self.edit_mode)
+        self._hover = None
+        self._drag = None
+        self.setCursor(
+            Qt.CursorShape.CrossCursor if self.edit_mode else Qt.CursorShape.ArrowCursor
+        )
+        self.editModeChanged.emit(self.edit_mode)
+        self.update()
+
+    def can_undo(self):
+        return bool(self._undo_stack)
+
+    def has_shapes(self):
+        return any(
+            h.bottom_offsets or (i == 0 and h.top_offsets)
+            for i, h in enumerate(self.horizons)
+        )
+
+    def _snapshot(self):
+        return [
+            (
+                list(h.top_offsets) if h.top_offsets else None,
+                list(h.bottom_offsets) if h.bottom_offsets else None,
+            )
+            for h in self.horizons
+        ]
+
+    def _restore(self, snap):
+        for h, (top, bottom) in zip(self.horizons, snap):
+            h.top_offsets = normalize_offsets(top)
+            h.bottom_offsets = normalize_offsets(bottom)
+        self._invalidate()
+
+    def _push_undo(self):
+        self._undo_stack.append(self._snapshot())
+        del self._undo_stack[:-50]  # máximo 50 pasos
+
+    def undo_shape(self):
+        """Deshace la última edición de forma."""
+        if not self._undo_stack:
+            return
+        self._restore(self._undo_stack.pop())
+        self.shapeEdited.emit()
+
+    def reset_shapes(self):
+        """Elimina todas las formas manuales y vuelve a la forma automática."""
+        if not self.has_shapes():
+            return
+        self._push_undo()
+        for h in self.horizons:
+            h.top_offsets = None
+            h.bottom_offsets = None
+        self._invalidate()
+        self.shapeEdited.emit()
+
+    def _invalidate(self):
+        self._cached_paths = []
+        self._cache_width = -1
+        self.update()
+
+    def _offsets_for(self, boundary_idx):
+        """Lista de offsets (editable) del límite indicado; la crea si no existe."""
+        if boundary_idx == 0:
+            hor = self.horizons[0]
+            if hor.top_offsets is None:
+                hor.top_offsets = [0.0] * SHAPE_POINTS
+            return hor.top_offsets
+        hor = self.horizons[boundary_idx - 1]
+        if hor.bottom_offsets is None:
+            hor.bottom_offsets = [0.0] * SHAPE_POINTS
+        return hor.bottom_offsets
+
+    def _handle_positions(self):
+        """[(límite, punto, QPointF)] en coordenadas del widget (con scroll)."""
+        if not self._boundaries:
+            return []
+        out = []
+        idxs = ProfileGeometry.control_indices()
+        for b, pts in enumerate(self._boundaries):
+            for k, i in enumerate(idxs):
+                p = pts[i]
+                out.append((b, k, QPointF(p.x(), p.y() + self._scroll_offset)))
+        return out
+
+    def _hit_test(self, pos):
+        best, best_d = None, HANDLE_HIT_RADIUS
+        for b, k, p in self._handle_positions():
+            d = ((p.x() - pos.x()) ** 2 + (p.y() - pos.y()) ** 2) ** 0.5
+            if d <= best_d:
+                best, best_d = (b, k), d
+        return best
+
+    def _boundary_name(self, b):
+        if b == 0:
+            return f"Superficie ({self.horizons[0].name})"
+        upper = self.horizons[b - 1].name
+        if b < len(self.horizons):
+            return f"Límite {upper} / {self.horizons[b].name}"
+        return f"Base de {upper}"
+
+    def mousePressEvent(self, event):
+        if not (self.edit_mode and self.horizons):
+            return super().mousePressEvent(event)
+        if event.button() != Qt.MouseButton.LeftButton:
+            return super().mousePressEvent(event)
+        hit = self._hit_test(event.pos())
+        if hit is None:
+            return super().mousePressEvent(event)
+        self._push_undo()
+        b, k = hit
+        offsets = self._offsets_for(b)
+        self._drag = {
+            "b": b,
+            "k": k,
+            "y0": event.pos().y(),
+            "start": list(offsets),
+            "whole": bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier),
+        }
+        self.setCursor(Qt.CursorShape.SizeVerCursor)
+        event.accept()
+
+    def mouseMoveEvent(self, event):
+        if not self.edit_mode:
+            return super().mouseMoveEvent(event)
+        if self._drag:
+            d = self._drag
+            delta_cm = (event.pos().y() - d["y0"]) / max(self._current_scale, 1e-6)
+            offsets = self._offsets_for(d["b"])
+            if d["whole"]:
+                for i in range(SHAPE_POINTS):
+                    offsets[i] = self._clamp(d["start"][i] + delta_cm)
+            else:
+                offsets[d["k"]] = self._clamp(d["start"][d["k"]] + delta_cm)
+            self._cached_paths = []
+            self._cache_width = -1
+            self.update()
+            event.accept()
+            return
+        hit = self._hit_test(event.pos())
+        if hit != self._hover:
+            self._hover = hit
+            self.setCursor(
+                Qt.CursorShape.SizeVerCursor if hit else Qt.CursorShape.CrossCursor
+            )
+            self.setToolTip(self._boundary_name(hit[0]) if hit else "")
+            self.update()
+
+    def mouseReleaseEvent(self, event):
+        if self.edit_mode and self._drag:
+            d = self._drag
+            self._drag = None
+            # Si no hubo cambio real, descartar el paso de deshacer
+            if self._offsets_for(d["b"]) == d["start"]:
+                if self._undo_stack:
+                    self._undo_stack.pop()
+                self._cleanup_empty()
+            else:
+                self._cleanup_empty()
+                self.shapeEdited.emit()
+            self.setCursor(Qt.CursorShape.CrossCursor)
+            self.update()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        """Doble clic sobre un punto: lo devuelve a la forma automática."""
+        if not (self.edit_mode and self.horizons):
+            return super().mouseDoubleClickEvent(event)
+        hit = self._hit_test(event.pos())
+        if hit is None:
+            return super().mouseDoubleClickEvent(event)
+        b, k = hit
+        offsets = self._offsets_for(b)
+        if offsets[k] != 0.0:
+            self._push_undo()
+            offsets[k] = 0.0
+            self._cleanup_empty()
+            self._invalidate()
+            self.shapeEdited.emit()
+        event.accept()
+
+    @staticmethod
+    def _clamp(v):
+        return max(-MAX_SHAPE_OFFSET_CM, min(MAX_SHAPE_OFFSET_CM, v))
+
+    def _cleanup_empty(self):
+        """Convierte listas de offsets todo-cero en None (sin forma manual)."""
+        for h in self.horizons:
+            h.top_offsets = normalize_offsets(h.top_offsets)
+            h.bottom_offsets = normalize_offsets(h.bottom_offsets)
+        self._cached_paths = []
+        self._cache_width = -1
+
+    def _draw_edit_overlay(self, painter):
+        """Dibuja los puntos de control y las líneas guía del modo lápiz."""
+        if not self._boundaries:
+            return
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        active_b = (
+            self._drag["b"] if self._drag else (self._hover[0] if self._hover else None)
+        )
+        for b, pts in enumerate(self._boundaries):
+            if b == active_b:
+                guide = QPainterPath(
+                    QPointF(pts[0].x(), pts[0].y() + self._scroll_offset)
+                )
+                for p in pts[1:]:
+                    guide.lineTo(QPointF(p.x(), p.y() + self._scroll_offset))
+                painter.setPen(QPen(QColor(255, 140, 0, 220), 2.2))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawPath(guide)
+        for b, k, p in self._handle_positions():
+            active = (self._drag and (self._drag["b"], self._drag["k"]) == (b, k)) or (
+                not self._drag and self._hover == (b, k)
+            )
+            whole = self._drag and self._drag["whole"] and self._drag["b"] == b
+            painter.setPen(QPen(QColor(40, 40, 40), 1.2))
+            painter.setBrush(
+                QColor(255, 140, 0) if (active or whole) else QColor(255, 255, 255, 230)
+            )
+            r = HANDLE_RADIUS + (1.5 if active else 0)
+            painter.drawEllipse(p, r, r)
+        if self._drag:
+            d = self._drag
+            offsets = self._offsets_for(d["b"])
+            val = offsets[d["k"]]
+            text = f"{self._boundary_name(d['b'])}:  {val:+.1f} cm"
+            if d["whole"]:
+                text += "  (límite completo)"
+            font = painter.font()
+            font.setBold(True)
+            painter.setFont(font)
+            metrics = painter.fontMetrics()
+            w = metrics.horizontalAdvance(text) + 12
+            box = QRectF(8, 8, w, metrics.height() + 8)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(30, 30, 30, 200))
+            painter.drawRoundedRect(box, 4, 4)
+            painter.setPen(QColor(255, 255, 255))
+            painter.drawText(box, Qt.AlignmentFlag.AlignCenter, text)
+        painter.restore()
 
     def _update_widget_height(self):
         """Ajusta la altura mínima del widget según la escala actual."""
@@ -41,10 +309,14 @@ class EdafoCanvas(QWidget):
         self.update()
 
     def set_data(self, horizons):
+        if horizons is not self.horizons:
+            self._undo_stack = []  # otro perfil: el historial ya no aplica
         self.horizons = horizons
         # Invalidar caché al cambiar datos
         self._cached_paths = []
         self._cache_width = -1
+        self._hover = None
+        self._drag = None
         self._scroll_offset = 0  # reset scroll al cambiar datos
         self._update_widget_height()
 
@@ -115,6 +387,7 @@ class EdafoCanvas(QWidget):
 
         # Forzar el redibujado sobre el pixmap
         self.render_to_painter(painter, self.width(), content_height)
+        painter.end()
         return pixmap.save(file_path)
 
     def _build_geometry_cache(self, width):
@@ -125,48 +398,23 @@ class EdafoCanvas(QWidget):
         self._cache_width = width
         scale = self._current_scale
 
-        h0 = self.horizons[0]
-        # El primer horizonte usa la misma amplitud de su boundary_type para que
-        # su borde superior no sea completamente plano comparado con los demás
-        top_amp = {"abrupt": 2, "clear": 5, "gradual": 12, "diffuse": 25}.get(
-            h0.boundary_type, 5
-        )
-        current_top_boundary = ProfileGeometry.generate_boundary(
-            0,
-            width,
-            amplitude=top_amp,
-            folding=h0.folding,
-            fault_type="none",
-            fault_displacement=0,
-            inclination=getattr(h0, "inclination", 0),
+        # Geometría compartida con la vista previa y el PDF (incluye la forma
+        # manual del lápiz y evita que los límites se crucen)
+        self._boundaries = ProfileGeometry.compute_boundaries(
+            self.horizons, width, scale
         )
 
-        for hor in self.horizons:
-            y_bottom = hor.bottom * scale
-            amp = {"abrupt": 2, "clear": 5, "gradual": 12, "diffuse": 25}.get(
-                hor.boundary_type, 5
-            )
-
-            bottom_boundary = ProfileGeometry.generate_boundary(
-                y_bottom,
-                width,
-                amplitude=amp,
-                folding=hor.folding,
-                fault_type=hor.fault_type,
-                fault_displacement=hor.fault_displacement,
-                inclination=getattr(hor, "inclination", 0),
-            )
-
+        for i, hor in enumerate(self.horizons):
+            top_b, bottom_b = self._boundaries[i], self._boundaries[i + 1]
             path = QPainterPath()
-            path.moveTo(current_top_boundary[0])
-            for p in current_top_boundary[1:]:
+            path.moveTo(top_b[0])
+            for p in top_b[1:]:
                 path.lineTo(p)
-            for p in reversed(bottom_boundary):
+            for p in reversed(bottom_b):
                 path.lineTo(p)
             path.closeSubpath()
 
             self._cached_paths.append((path, hor))
-            current_top_boundary = bottom_boundary
 
     def render_to_painter(self, painter, width, height):
         """Lógica de renderizado compartida entre paintEvent y exportación.
@@ -262,6 +510,9 @@ class EdafoCanvas(QWidget):
             painter = QPainter(self)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             self.render_to_painter(painter, self.width(), self.height())
+            if self.edit_mode:
+                self._draw_edit_overlay(painter)
+            painter.end()
         finally:
             self._in_paint_event = False
 

@@ -367,7 +367,13 @@ Please report bugs at: https://github.com/Felipe-Flores-creator/SoilTool_Qgis/is
 
 ## 🔄 Version History
 
-### v1.0.5 (Current)
+### v1.1.0 (Current)
+- ✅ Pencil tool in the 2D Canvas to manually reshape horizon boundaries
+- ✅ Cursor preview as a rectangular mini soil profile with colours and patterns
+- ✅ Professional PDF report: profile location map, one sheet per profile with
+  column, locator map, horizon table and soil/stratigraphic symbology
+
+### v1.0.5
 - ✅ Compatible with QGIS 4 (Qt6) and QGIS 3
 - ✅ Fixed freeze when tabifying dock panels
 - ✅ Fixed DEM sampling in the topographic profile

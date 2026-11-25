@@ -95,7 +95,15 @@ class HorizonManager:
                 return None
             idx = layer.fields().indexOf(ID_FIELD_NAME)
 
-        val = feature.attribute(idx)
+        if idx >= len(feature.attributes()):
+            # El campo se acaba de crear: la entidad en memoria aún no lo tiene
+            fresh = layer.getFeature(feature.id())
+            if fresh.isValid():
+                feature = fresh
+        try:
+            val = feature.attribute(idx)
+        except KeyError:
+            val = None
         if val and str(val).strip() and str(val) != "NULL":
             return str(val).strip()
 
@@ -192,6 +200,9 @@ class HorizonManager:
             "fault_displacement": horizon.fault_displacement,
             "image_path": horizon.image_path,
             "inclination": getattr(horizon, "inclination", 0),
+            # Forma manual (lápiz): desplazamientos en cm de los puntos de control
+            "bottom_offsets": getattr(horizon, "bottom_offsets", None),
+            "top_offsets": getattr(horizon, "top_offsets", None),
         }
 
     @staticmethod
@@ -211,6 +222,8 @@ class HorizonManager:
                 "image_path", data.get("png_path", data.get("svg_path", None))
             ),
             inclination=data.get("inclination", 0),
+            bottom_offsets=data.get("bottom_offsets"),
+            top_offsets=data.get("top_offsets"),
         )
 
     @staticmethod

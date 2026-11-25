@@ -93,6 +93,7 @@ class SoilTool:
             dock_editor = QDockWidget(
                 "SoilTool - Editor de Perfil", self.iface.mainWindow()
             )
+            dock_editor.setObjectName("SoilToolEditorDock")
             dock_editor.setWidget(self.panel)
             dock_editor.setAllowedAreas(
                 Qt.DockWidgetArea.LeftDockWidgetArea
@@ -105,6 +106,7 @@ class SoilTool:
 
             # 2. Dock del Lienzo 2D
             dock_canvas = QDockWidget("SoilTool - Lienzo 2D", self.iface.mainWindow())
+            dock_canvas.setObjectName("SoilToolCanvasDock")
             dock_canvas.setWidget(self.panel.canvas_widget)
             dock_canvas.setAllowedAreas(
                 Qt.DockWidgetArea.LeftDockWidgetArea
@@ -121,6 +123,7 @@ class SoilTool:
             dock_explorer = QDockWidget(
                 "SoilTool - Explorador", self.iface.mainWindow()
             )
+            dock_explorer.setObjectName("SoilToolExplorerDock")
             dock_explorer.setWidget(self.panel.explorer_widget)
             dock_explorer.setAllowedAreas(
                 Qt.DockWidgetArea.LeftDockWidgetArea
@@ -213,6 +216,17 @@ class SoilTool:
             Qt.DockWidgetArea.BottomDockWidgetArea, self.dynamic_profile_dock
         )
         self.docks.append(self.dynamic_profile_dock)
+        # Alto inicial moderado: el panel se acopla abajo sin quitarle
+        # demasiado espacio al mapa (el usuario puede ajustarlo después)
+        main_window = self.iface.mainWindow()
+        if hasattr(main_window, "resizeDocks"):
+            height = max(240, min(380, int(main_window.height() * 0.40)))
+            QTimer.singleShot(
+                0,
+                lambda: main_window.resizeDocks(
+                    [self.dynamic_profile_dock], [height], Qt.Orientation.Vertical
+                ),
+            )
 
     def on_editor_visibility_changed(self, visible):
         """Maneja cambios de visibilidad del dock del editor.

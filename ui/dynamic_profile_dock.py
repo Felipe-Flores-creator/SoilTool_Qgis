@@ -16,7 +16,7 @@ Panel de Perfil Topográfico con estratigrafía edafológica (Matplotlib).
 import math
 
 import numpy as np
-from qgis.PyQt.QtCore import Qt, QTimer
+from qgis.PyQt.QtCore import QSize, Qt, QTimer
 from qgis.PyQt.QtGui import QColor, QImage
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
@@ -24,15 +24,19 @@ from qgis.PyQt.QtWidgets import (
     QDockWidget,
     QDoubleSpinBox,
     QFileDialog,
+    QFormLayout,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QMessageBox,
     QPushButton,
     QSizePolicy,
+    QToolButton,
     QVBoxLayout,
     QWidget,
+    QWidgetAction,
 )
-from qgis.core import QgsGeometry, QgsMapLayerProxyModel, QgsPointXY
+from qgis.core import QgsApplication, QgsGeometry, QgsMapLayerProxyModel, QgsPointXY
 from qgis.gui import QgsMapLayerComboBox, QgsRubberBand, QgsVertexMarker
 
 import matplotlib.patches as mpatches
@@ -149,6 +153,8 @@ class DynamicProfileDock(QDockWidget):
 
     def __init__(self, parent=None, iface=None):
         super().__init__("SoilTool - Perfil Topográfico", parent)
+        # objectName: permite a QGIS guardar y restaurar su posición y tamaño
+        self.setObjectName("SoilToolProfileDock")
         self.iface = iface
         self.points_data = []
         self.line_geometry = None
@@ -158,7 +164,7 @@ class DynamicProfileDock(QDockWidget):
         self.setAllowedAreas(
             Qt.DockWidgetArea.TopDockWidgetArea | Qt.DockWidgetArea.BottomDockWidgetArea
         )
-        self.setMinimumHeight(300)
+        self.setMinimumHeight(170)
 
         # Marcadores en el mapa
         self.position_marker = None
@@ -193,71 +199,108 @@ class DynamicProfileDock(QDockWidget):
     # Interfaz
     # ------------------------------------------------------------------
     def setup_ui(self):
+        """Barra compacta de una fila + menú de opciones + gráfico.
+
+        Se mantiene un ancho mínimo pequeño para que el panel se acople abajo,
+        entre los paneles laterales de QGIS, sin empujar ni tapar nada.
+        """
         self.main_widget = QWidget()
         lay = QVBoxLayout(self.main_widget)
-        lay.setContentsMargins(5, 4, 5, 2)
-        lay.setSpacing(3)
+        lay.setContentsMargins(4, 3, 4, 0)
+        lay.setSpacing(2)
 
-        # Fila 1: datos y acciones
-        row1 = QHBoxLayout()
-        row1.setSpacing(6)
-        row1.addWidget(QLabel("DEM:"))
-        self.dem_combo = QgsMapLayerComboBox()
-        self.dem_combo.setFilters(QgsMapLayerProxyModel.RasterLayer)
-        self.dem_combo.setMinimumWidth(130)
-        row1.addWidget(self.dem_combo)
+        bar = QHBoxLayout()
+        bar.setSpacing(4)
 
-        row1.addWidget(QLabel("Suelos:"))
-        self.soils_combo = QgsMapLayerComboBox()
-        self.soils_combo.setFilters(QgsMapLayerProxyModel.PolygonLayer)
-        self.soils_combo.setMinimumWidth(130)
-        row1.addWidget(self.soils_combo)
+        def combo_layers(filt, tip):
+            c = QgsMapLayerComboBox()
+            c.setFilters(filt)
+            c.setToolTip(tip)
+            c.setSizeAdjustPolicy(
+                QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+            )
+            c.setMinimumContentsLength(8)
+            c.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            return c
 
-        row1.addWidget(QLabel("Paso (m):"))
+        bar.addWidget(QLabel("DEM"))
+        self.dem_combo = combo_layers(
+            QgsMapLayerProxyModel.RasterLayer, "Modelo digital de elevación"
+        )
+        bar.addWidget(self.dem_combo, 2)
+        bar.addWidget(QLabel("Suelos"))
+        self.soils_combo = combo_layers(
+            QgsMapLayerProxyModel.PolygonLayer, "Capa de unidades de suelo"
+        )
+        bar.addWidget(self.soils_combo, 2)
+
+        self.draw_btn = QPushButton("✏ Trazar")
+        self.draw_btn.setCheckable(True)
+        self.draw_btn.setToolTip(
+            "Trazar perfil en el mapa\n"
+            "Clic izquierdo: añadir vértice · Doble clic o clic derecho: terminar"
+        )
+        self.draw_btn.setStyleSheet(
+            "QPushButton { font-weight: bold; background-color: #5d4037; color: white;"
+            " padding: 2px 8px; border-radius: 3px; }"
+            "QPushButton:checked { background-color: #e65100; }"
+        )
+        self.draw_btn.clicked.connect(self.toggle_draw_tool)
+        bar.addWidget(self.draw_btn)
+
+        def tool_button(icon, fallback, tip, slot):
+            b = QToolButton()
+            ic = QgsApplication.getThemeIcon(icon)
+            if ic.isNull():
+                b.setText(fallback)
+            else:
+                b.setIcon(ic)
+            b.setToolTip(tip)
+            b.setAutoRaise(True)
+            b.clicked.connect(slot)
+            bar.addWidget(b)
+            return b
+
+        self.recalc_btn = tool_button(
+            "/mActionRefresh.svg",
+            "⟳",
+            "Recalcular la misma línea (tras cambiar DEM, capa de suelos o paso)",
+            self.recalculate,
+        )
+        self.clear_btn = tool_button(
+            "/mActionDeleteSelected.svg", "✕", "Limpiar el perfil", self.clear_profile
+        )
+        self.export_btn = tool_button(
+            "/mActionFileSaveAs.svg",
+            "⤓",
+            "Exportar el gráfico a PNG, PDF o SVG (300 ppp)",
+            self.export_dialog,
+        )
+
+        # --- Menú de opciones (no ocupa ancho en el panel) ---
+        self.options_btn = QToolButton()
+        ic = QgsApplication.getThemeIcon("/mActionOptions.svg")
+        if not ic.isNull():
+            self.options_btn.setIcon(ic)
+        self.options_btn.setText("Opciones")
+        self.options_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.options_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.options_btn.setAutoRaise(True)
+        self.options_btn.setToolTip("Paso de muestreo, exageraciones y capas visibles")
+        menu = QMenu(self.options_btn)
+        opts = QWidget()
+        form = QFormLayout(opts)
+        form.setContentsMargins(10, 8, 10, 8)
+        form.setSpacing(5)
+
         self.step_spin = QDoubleSpinBox()
         self.step_spin.setRange(0.5, 500.0)
         self.step_spin.setValue(5.0)
         self.step_spin.setDecimals(1)
-        self.step_spin.setFixedWidth(64)
+        self.step_spin.setSuffix(" m")
         self.step_spin.setToolTip("Distancia entre muestras a lo largo de la línea")
-        row1.addWidget(self.step_spin)
+        form.addRow("Paso de muestreo", self.step_spin)
 
-        self.draw_btn = QPushButton("✏  Trazar perfil")
-        self.draw_btn.setCheckable(True)
-        self.draw_btn.setToolTip(
-            "Clic izquierdo: añadir vértice\nDoble clic o clic derecho: terminar"
-        )
-        self.draw_btn.setStyleSheet(
-            "QPushButton { font-weight: bold; background-color: #5d4037; color: white;"
-            " padding: 3px 10px; border-radius: 3px; }"
-            "QPushButton:checked { background-color: #e65100; }"
-        )
-        self.draw_btn.clicked.connect(self.toggle_draw_tool)
-        row1.addWidget(self.draw_btn)
-
-        self.recalc_btn = QPushButton("⟳ Recalcular")
-        self.recalc_btn.setToolTip(
-            "Vuelve a muestrear la misma línea (p. ej. tras cambiar el DEM, la capa "
-            "de suelos o el paso)"
-        )
-        self.recalc_btn.clicked.connect(self.recalculate)
-        row1.addWidget(self.recalc_btn)
-
-        self.clear_btn = QPushButton("Limpiar")
-        self.clear_btn.clicked.connect(self.clear_profile)
-        row1.addWidget(self.clear_btn)
-
-        self.export_btn = QPushButton("Exportar…")
-        self.export_btn.setToolTip("Guarda el gráfico en PNG, PDF o SVG (300 ppp)")
-        self.export_btn.clicked.connect(self.export_dialog)
-        row1.addWidget(self.export_btn)
-        row1.addStretch()
-        lay.addLayout(row1)
-
-        # Fila 2: opciones de visualización
-        row2 = QHBoxLayout()
-        row2.setSpacing(6)
-        row2.addWidget(QLabel("Exag. suelo:"))
         self.soil_exag_combo = QComboBox()
         self.soil_exag_combo.addItem("Auto", 0)
         for f in (1, 2, 5, 10, 20, 50, 100, 200):
@@ -266,47 +309,49 @@ class DynamicProfileDock(QDockWidget):
             "Multiplica la profundidad de los horizontes para que se vean frente "
             "al relieve. 'Auto' la ajusta a ~15 % del desnivel."
         )
-        row2.addWidget(self.soil_exag_combo)
+        form.addRow("Exageración del suelo", self.soil_exag_combo)
 
-        row2.addWidget(QLabel("Exag. vertical:"))
         self.ve_combo = QComboBox()
-        self.ve_combo.addItem("Ajustar", 0)
+        self.ve_combo.addItem("Ajustar al panel", 0)
         for f in (1, 2, 5, 10, 20):
             self.ve_combo.addItem(f"×{f}", f)
-        self.ve_combo.setToolTip(
-            "Relación entre escala vertical y horizontal del gráfico"
-        )
-        row2.addWidget(self.ve_combo)
+        form.addRow("Exageración vertical", self.ve_combo)
 
-        row2.addWidget(QLabel("Distancia:"))
         self.unit_combo = QComboBox()
         self.unit_combo.addItems(["Metros (m)", "Kilómetros (km)"])
-        row2.addWidget(self.unit_combo)
+        form.addRow("Distancia en", self.unit_combo)
 
-        self.units_check = QCheckBox("Unidades de suelo")
-        self.units_check.setChecked(True)
-        self.patterns_check = QCheckBox("Patrones")
-        self.patterns_check.setChecked(True)
-        self.slope_check = QCheckBox("Pendiente")
-        self.slope_check.setChecked(True)
-        self.columns_check = QCheckBox("Columnas a escala real")
-        self.columns_check.setChecked(True)
+        self.units_check = QCheckBox("Unidades de suelo rotuladas")
+        self.patterns_check = QCheckBox("Patrones de material")
+        self.slope_check = QCheckBox("Gráfico de pendiente")
+        self.columns_check = QCheckBox("Columnas del perfil a escala real")
         self.columns_check.setToolTip(
-            "Muestra, sobre cada cruce con una unidad de suelo, la columna del "
-            "perfil edafológico con su profundidad real (regla en cm)"
+            "Sobre cada cruce con una unidad de suelo, la columna del perfil "
+            "edafológico con su profundidad real (regla en cm)"
         )
-        for w in (
+        for chk in (
             self.units_check,
             self.patterns_check,
             self.slope_check,
             self.columns_check,
         ):
-            row2.addWidget(w)
-        row2.addStretch()
-        self.status_label = QLabel("Elige un DEM y pulsa «Trazar perfil».")
+            chk.setChecked(True)
+            form.addRow(chk)
+
+        act = QWidgetAction(menu)
+        act.setDefaultWidget(opts)
+        menu.addAction(act)
+        self.options_btn.setMenu(menu)
+        bar.addWidget(self.options_btn)
+
+        self.status_label = QLabel("Elige un DEM y pulsa «Trazar».")
         self.status_label.setStyleSheet("color: #6d4c41;")
-        row2.addWidget(self.status_label)
-        lay.addLayout(row2)
+        # Ignored: el texto nunca obliga a ensanchar el panel
+        self.status_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
+        bar.addWidget(self.status_label, 3)
+        lay.addLayout(bar)
 
         for combo in (self.soil_exag_combo, self.ve_combo, self.unit_combo):
             combo.currentIndexChanged.connect(self.plot_profile)
@@ -324,9 +369,11 @@ class DynamicProfileDock(QDockWidget):
         self.canvas.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
+        self.canvas.setMinimumSize(200, 110)
         lay.addWidget(self.canvas, 1)
         self.toolbar = NavigationToolbar(self.canvas, self.main_widget)
-        self.toolbar.setIconSize(self.toolbar.iconSize() * 0.8)
+        self.toolbar.setIconSize(QSize(16, 16))
+        self.toolbar.setMaximumHeight(28)
         lay.addWidget(self.toolbar)
         self.setWidget(self.main_widget)
 
@@ -512,7 +559,7 @@ class DynamicProfileDock(QDockWidget):
         self.line_geometry = None
         self.total_m = 0.0
         self._clear_all_map_items()
-        self.status_label.setText("Elige un DEM y pulsa «Trazar perfil».")
+        self.status_label.setText("Elige un DEM y pulsa «Trazar».")
         self._draw_placeholder()
         self._update_buttons()
 
@@ -673,9 +720,13 @@ class DynamicProfileDock(QDockWidget):
         exag = self._soil_exaggeration(relief, max_depth_m)
         self._soil_exag = exag
 
-        show_slope = self.slope_check.isChecked()
+        # En paneles bajos se priorizan el perfil y luego las columnas
+        fig_w_avail, fig_h_avail = self.figure.get_size_inches() * self.figure.dpi
+        show_slope = self.slope_check.isChecked() and fig_h_avail >= 300
         soil_runs = [r for r in runs if self.points_data[r[0]]["horizons"]]
-        show_cols = self.columns_check.isChecked() and bool(soil_runs)
+        show_cols = (
+            self.columns_check.isChecked() and bool(soil_runs) and fig_h_avail >= 220
+        )
         # Altura de la franja de columnas: al menos ~125 px si el panel es bajo
         fig_h_px = self.figure.get_size_inches()[1] * self.figure.dpi
         usable = max(fig_h_px - 100.0, 150.0)
@@ -700,14 +751,21 @@ class DynamicProfileDock(QDockWidget):
             for a, _ in soil_runs
             for h in self.points_data[a]["horizons"]
         }
-        ncol = 2 if 2 + len(leg_keys) + len(leg_bounds) > 14 else 1
-        right = 0.80 if ncol == 1 else 0.68
+        # Diseño adaptable al tamaño del panel
+        show_legend = fig_w_avail >= 900
+        many = 2 + len(leg_keys) + len(leg_bounds) > 14
+        ncol = 2 if (many and fig_w_avail >= 1150) else 1
+        if show_legend:
+            right = 0.80 if ncol == 1 else 0.68
+        else:
+            right = 1.0 - 14.0 / max(fig_w_avail, 1.0)
+        compact = fig_h_avail < 300
         # Márgenes en puntos tipográficos (independientes de la altura del dock)
         fig_h_pt = max(self.figure.get_size_inches()[1] * 72.0, 120.0)
         self.figure.subplots_adjust(
-            left=0.06,
+            left=min(0.2, 58.0 / max(fig_w_avail, 1.0)),
             right=right,
-            top=1.0 - 46.0 / fig_h_pt,
+            top=1.0 - (24.0 if compact else 46.0) / fig_h_pt,
             bottom=30.0 / fig_h_pt,
         )
 
@@ -841,20 +899,39 @@ class DynamicProfileDock(QDockWidget):
         exag_txt = f"Profundidad del suelo exagerada ×{exag:g}"
         # Encabezado fijo arriba de la figura (título + estadísticas)
         fig = self.figure
+        x_left = self.figure.subplotpars.left
         head = offset_copy(fig.transFigure, fig=fig, y=-5, units="points")
-        fig.text(
-            0.06,
-            1.0,
-            "Perfil topográfico y estratigrafía edafológica",
-            transform=head,
-            fontsize=10,
-            fontweight="bold",
-            color="#3e2723",
-            va="top",
-        )
-        sub = offset_copy(fig.transFigure, fig=fig, y=-19, units="points")
-        fig.text(0.06, 1.0, info, transform=sub, fontsize=7, color="#5d4037", va="top")
-        if show_cols:
+        if compact:
+            short = (
+                f"Perfil topográfico  ·  {self._fmt_len(self.total_m)}  ·  "
+                f"desnivel {relief:.1f} m  ·  pend. media {stats['mean']:.1f} %"
+            )
+            fig.text(
+                x_left,
+                1.0,
+                short,
+                transform=head,
+                fontsize=8,
+                fontweight="bold",
+                color="#3e2723",
+                va="top",
+            )
+        else:
+            fig.text(
+                x_left,
+                1.0,
+                "Perfil topográfico y estratigrafía edafológica",
+                transform=head,
+                fontsize=10,
+                fontweight="bold",
+                color="#3e2723",
+                va="top",
+            )
+            sub = offset_copy(fig.transFigure, fig=fig, y=-19, units="points")
+            fig.text(
+                x_left, 1.0, info, transform=sub, fontsize=7, color="#5d4037", va="top"
+            )
+        if show_cols and not compact and fig_w_avail >= 700:
             fig.text(
                 right,
                 1.0,
@@ -912,16 +989,17 @@ class DynamicProfileDock(QDockWidget):
                 label="Sustrato no descrito",
             )
         )
-        ax.legend(
-            handles=handles,
-            loc="upper left",
-            bbox_to_anchor=(1.01, 1.0),
-            fontsize=7,
-            frameon=False,
-            ncol=ncol,
-            handlelength=2.2,
-            borderaxespad=0,
-        )
+        if show_legend:
+            ax.legend(
+                handles=handles,
+                loc="upper left",
+                bbox_to_anchor=(1.01, 1.0),
+                fontsize=7,
+                frameon=False,
+                ncol=ncol,
+                handlelength=2.2,
+                borderaxespad=0,
+            )
 
         # Artistas del cursor
         vl = ax.axvline(x[0], color="#e65100", linewidth=0.9, zorder=8, visible=False)
@@ -1168,20 +1246,22 @@ class DynamicProfileDock(QDockWidget):
         else:
             QMessageBox.critical(self, "Error al exportar", msg)
 
-    def export_figure(self, path, dpi=300):
-        """Guarda el gráfico (sin el cursor) en alta resolución."""
-        hidden = [a for a in self._cursor_artists if a.get_visible()]
-        for a in hidden:
-            a.set_visible(False)
+    def export_figure(self, path, dpi=300, size_in=(13.0, 6.5)):
+        """Guarda el gráfico en alta resolución con el diseño completo
+        (leyenda, columnas y pendiente), sea cual sea el tamaño del panel."""
+        original = self.figure.get_size_inches().copy()
         try:
+            self.figure.set_size_inches(*size_in, forward=False)
+            self.plot_profile()
+            for a in self._cursor_artists:
+                a.set_visible(False)
             self.figure.savefig(path, dpi=dpi, bbox_inches="tight", facecolor="white")
             return True, f"Perfil guardado en:\n{path}"
         except Exception as e:
             return False, str(e)
         finally:
-            for a in hidden:
-                a.set_visible(True)
-            self.canvas.draw_idle()
+            self.figure.set_size_inches(*original, forward=False)
+            self.plot_profile()
 
     def closeEvent(self, event):
         """Al cerrar el dock, limpiar los marcadores del mapa."""

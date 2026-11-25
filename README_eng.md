@@ -365,7 +365,12 @@ Please report bugs at: https://github.com/Felipe-Flores-creator/SoilTool/issues
 
 ## 🔄 Version History
 
-### v1.0.4 (Current)
+### v1.0.5 (Current)
+- ✅ Compatible with QGIS 4 (Qt6) and QGIS 3
+- ✅ Fixed freeze when tabifying dock panels
+- ✅ Fixed DEM sampling in the topographic profile
+
+### v1.0.4
 - ✅ Complete horizon management with buttons
 - ✅ Predefined and custom materials
 - ✅ Storage in feature attributes

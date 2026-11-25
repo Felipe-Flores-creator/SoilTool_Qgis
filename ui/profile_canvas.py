@@ -78,14 +78,14 @@ class EdafoCanvas(QWidget):
         modifiers = event.modifiers()
         delta = event.angleDelta().y()
 
-        if modifiers & Qt.ControlModifier:
+        if modifiers & Qt.KeyboardModifier.ControlModifier:
             # Zoom in/out
             if delta > 0:
                 self.zoom_in()
             else:
                 self.zoom_out()
             event.accept()
-        elif modifiers & Qt.ShiftModifier:
+        elif modifiers & Qt.KeyboardModifier.ShiftModifier:
             # Scroll horizontal (invertido para natural feel)
             self._scroll_offset += delta / 8
             self.update()
@@ -107,11 +107,11 @@ class EdafoCanvas(QWidget):
         content_height = int(max_depth * self.scale_factor) + 50
 
         pixmap = QPixmap(self.width(), content_height)
-        pixmap.fill(Qt.white)  # Fondo blanco para la exportación
+        pixmap.fill(Qt.GlobalColor.white)  # Fondo blanco para la exportación
 
         # Usar un painter sobre el pixmap
         painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         # Forzar el redibujado sobre el pixmap
         self.render_to_painter(painter, self.width(), content_height)
@@ -198,17 +198,17 @@ class EdafoCanvas(QWidget):
                 if not pixmap_img.isNull():
                     image_brush = QBrush(pixmap_img)
                     painter.setBrush(QBrush(grad))
-                    painter.setPen(Qt.NoPen)
+                    painter.setPen(Qt.PenStyle.NoPen)
                     painter.drawPath(path)
                     painter.setBrush(image_brush)
                     painter.drawPath(path)
                 else:
                     painter.setBrush(QBrush(grad))
-                    painter.setPen(Qt.NoPen)
+                    painter.setPen(Qt.PenStyle.NoPen)
                     painter.drawPath(path)
             else:
                 painter.setBrush(QBrush(grad))
-                painter.setPen(Qt.NoPen)
+                painter.setPen(Qt.PenStyle.NoPen)
                 painter.drawPath(path)
 
             self.draw_soil_texture(painter, path, hor.texture)
@@ -217,19 +217,19 @@ class EdafoCanvas(QWidget):
             y_text = (hor.top * scale) + 10 - (hor.folding * 0.5)
             text_rect = QRectF(10, y_text, width - 20, 20)
 
-            painter.setPen(Qt.black)
+            painter.setPen(Qt.GlobalColor.black)
             font = painter.font()
             font.setBold(True)
             painter.setFont(font)
-            painter.drawText(text_rect, Qt.AlignLeft | Qt.AlignVCenter, hor.name)
+            painter.drawText(text_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, hor.name)
             painter.restore()
 
-            painter.setPen(QPen(hor.color.darker(150), 1, Qt.SolidLine))
-            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(hor.color.darker(150), 1, Qt.PenStyle.SolidLine))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPath(path)
 
         if self.show_fault_line:
-            painter.setPen(QPen(QColor(255, 0, 0, 180), 2, Qt.DashLine))
+            painter.setPen(QPen(QColor(255, 0, 0, 180), 2, Qt.PenStyle.DashLine))
             center_x = width * 0.5
             for hor in self.horizons:
                 if hor.fault_type != "none":
@@ -256,7 +256,7 @@ class EdafoCanvas(QWidget):
         self._in_paint_event = True
         try:
             painter = QPainter(self)
-            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             self.render_to_painter(painter, self.width(), self.height())
         finally:
             self._in_paint_event = False

@@ -93,8 +93,8 @@ class SoilTool:
                 "SoilTool - Editor de Perfil", self.iface.mainWindow()
             )
             dock_editor.setWidget(self.panel)
-            dock_editor.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
-            self.iface.addDockWidget(Qt.RightDockWidgetArea, dock_editor)
+            dock_editor.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+            self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock_editor)
             self.docks.append(dock_editor)
             self.panel.dock_editor = dock_editor
             dock_editor.visibilityChanged.connect(self.on_editor_visibility_changed)
@@ -102,8 +102,8 @@ class SoilTool:
             # 2. Dock del Lienzo 2D
             dock_canvas = QDockWidget("SoilTool - Lienzo 2D", self.iface.mainWindow())
             dock_canvas.setWidget(self.panel.canvas_widget)
-            dock_canvas.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
-            self.iface.addDockWidget(Qt.RightDockWidgetArea, dock_canvas)
+            dock_canvas.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+            self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock_canvas)
             self.docks.append(dock_canvas)
             self.panel.dock_canvas = dock_canvas
             dock_canvas.visibilityChanged.connect(
@@ -116,9 +116,9 @@ class SoilTool:
             )
             dock_explorer.setWidget(self.panel.explorer_widget)
             dock_explorer.setAllowedAreas(
-                Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea
+                Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
             )
-            self.iface.addDockWidget(Qt.RightDockWidgetArea, dock_explorer)
+            self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock_explorer)
             self.docks.append(dock_explorer)
             self.panel.dock_explorer = dock_explorer
 
@@ -198,7 +198,7 @@ class SoilTool:
         self.dynamic_profile_dock = DynamicProfileDock(
             self.iface.mainWindow(), self.iface
         )
-        self.iface.addDockWidget(Qt.BottomDockWidgetArea, self.dynamic_profile_dock)
+        self.iface.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.dynamic_profile_dock)
         self.docks.append(self.dynamic_profile_dock)
 
     def on_editor_visibility_changed(self, visible):

@@ -69,7 +69,7 @@ class DEMProfileCanvas(QWidget):
         super().__init__(parent)
         self.profile_data = None
         self.setMinimumSize(400, 250)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # Configuración de dibujo
         self.margin_left = 65
@@ -421,10 +421,10 @@ class DEMProfileCanvas(QWidget):
         export_width = max(self.width(), 1200)
         export_height = max(self.height(), 600)
         pixmap = QPixmap(export_width, export_height)
-        pixmap.fill(Qt.white)
+        pixmap.fill(Qt.GlobalColor.white)
         try:
             painter = QPainter(pixmap)
-            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             self._draw_profile(painter, export_width, export_height)
         except Exception:
             return False
@@ -460,14 +460,14 @@ class DEMProfileCanvas(QWidget):
                 painter.setFont(font)
                 painter.drawText(
                     self.rect(),
-                    Qt.AlignCenter,
+                    Qt.AlignmentFlag.AlignCenter,
                     "Dibuje una línea sobre el DEM\npara generar el perfil topográfico",
                 )
                 return
 
             painter = QPainter(self)
-            painter.setRenderHint(QPainter.Antialiasing)
-            painter.setRenderHint(QPainter.SmoothPixmapTransform)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
 
             if self.edit_enabled and not self._edit_tracks_ready:
                 self._build_edit_tracks(data)
@@ -565,7 +565,7 @@ class DEMProfileCanvas(QWidget):
 
     def mousePressEvent(self, event):
         # 1) Si estamos creando una celda manual: clics definen start_d/end_d
-        if self._manual_add_mode and event.button() == Qt.LeftButton:
+        if self._manual_add_mode and event.button() == Qt.MouseButton.LeftButton:
             if (
                 not self._last_draw_params
                 or not self.profile_data
@@ -627,7 +627,7 @@ class DEMProfileCanvas(QWidget):
         # 2) Edición (arrastre) de top/bottom
         if not self.edit_enabled:
             return
-        if event.button() != Qt.LeftButton:
+        if event.button() != Qt.MouseButton.LeftButton:
             return
         if not self._edit_tracks_ready or not self.profile_data:
             return
@@ -672,19 +672,19 @@ class DEMProfileCanvas(QWidget):
         # Hover (solo por feedback mínimo)
         self._edit_hover_target = self._find_nearest_vertex(x, y)
         if self._edit_hover_target is not None:
-            self.setCursor(Qt.SizeVerCursor)
+            self.setCursor(Qt.CursorShape.SizeVerCursor)
         else:
-            self.setCursor(Qt.ArrowCursor)
+            self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def mouseReleaseEvent(self, event):
         if not self.edit_enabled:
             return
-        if event.button() != Qt.LeftButton:
+        if event.button() != Qt.MouseButton.LeftButton:
             return
         self._dragging = False
         self._drag_target = None
         self.update()
-        self.setCursor(Qt.ArrowCursor)
+        self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def _draw_profile(self, painter, width, height, data):
         """Dibuja el perfil completo: línea de superficie + horizontes con profundidad."""
@@ -797,7 +797,7 @@ class DEMProfileCanvas(QWidget):
         )
 
         # ---- CUADRÍCULA ----
-        painter.setPen(QPen(self.grid_color, 0.5, Qt.DashLine))
+        painter.setPen(QPen(self.grid_color, 0.5, Qt.PenStyle.DashLine))
 
         num_vert_lines = max(4, min(int(draw_width / 80), 20))
         for i in range(num_vert_lines + 1):
@@ -824,7 +824,7 @@ class DEMProfileCanvas(QWidget):
                 draw_bottom + 5,
                 50,
                 15,
-                Qt.AlignCenter,
+                Qt.AlignmentFlag.AlignCenter,
                 f"{dist:.0f} {unit_label}",
             )
 
@@ -836,7 +836,7 @@ class DEMProfileCanvas(QWidget):
             draw_bottom + 20,
             draw_width,
             15,
-            Qt.AlignCenter,
+            Qt.AlignmentFlag.AlignCenter,
             f"Distancia ({unit_label_axis})",
         )
 
@@ -848,7 +848,7 @@ class DEMProfileCanvas(QWidget):
                 int(y) - 8,
                 draw_left - 5,
                 16,
-                Qt.AlignRight | Qt.AlignVCenter,
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                 f"{elev:.1f}",
             )
 
@@ -860,7 +860,7 @@ class DEMProfileCanvas(QWidget):
             0,
             int(draw_height),
             12,
-            Qt.AlignCenter,
+            Qt.AlignmentFlag.AlignCenter,
             "Elevación (m s.n.m.)",
         )
         painter.restore()
@@ -1069,7 +1069,7 @@ class DEMProfileCanvas(QWidget):
                             QColor(255, 255, 255, 210),
                         )
                         painter.setPen(QColor(20, 20, 20, 200))
-                        painter.drawText(name_rect, Qt.AlignCenter, h.name)
+                        painter.drawText(name_rect, Qt.AlignmentFlag.AlignCenter, h.name)
 
                         font_label.setBold(False)
                         font_label.setPointSize(6)
@@ -1082,7 +1082,7 @@ class DEMProfileCanvas(QWidget):
                         )
                         painter.setPen(QColor(60, 60, 60, 200))
                         painter.drawText(
-                            thickness_rect, Qt.AlignCenter, f"{thickness_m:.2f} m"
+                            thickness_rect, Qt.AlignmentFlag.AlignCenter, f"{thickness_m:.2f} m"
                         )
 
                     painter.restore()
@@ -1091,7 +1091,7 @@ class DEMProfileCanvas(QWidget):
                     painter.setClipRect(draw_left, draw_top, draw_width, draw_height)
                     # Usar el color original del horizonte (sin oscurecer) para mejor visibilidad
                     painter.setPen(QPen(color, 1.0))
-                    painter.setBrush(Qt.NoBrush)
+                    painter.setBrush(Qt.BrushStyle.NoBrush)
                     painter.drawPath(horizon_path)
                     painter.restore()
 
@@ -1231,7 +1231,7 @@ class DEMProfileCanvas(QWidget):
                     12,
                 )
                 painter.setPen(QColor(20, 20, 20, 200))
-                painter.drawText(name_rect, Qt.AlignCenter, h.name)
+                painter.drawText(name_rect, Qt.AlignmentFlag.AlignCenter, h.name)
 
                 font_label.setBold(False)
                 font_label.setPointSize(6)
@@ -1243,7 +1243,7 @@ class DEMProfileCanvas(QWidget):
                     10,
                 )
                 painter.setPen(QColor(60, 60, 60, 200))
-                painter.drawText(thickness_rect, Qt.AlignCenter, f"{thickness_m:.2f} m")
+                painter.drawText(thickness_rect, Qt.AlignmentFlag.AlignCenter, f"{thickness_m:.2f} m")
 
                 painter.restore()
 
@@ -1251,7 +1251,7 @@ class DEMProfileCanvas(QWidget):
                 painter.setClipRect(draw_left, draw_top, draw_width, draw_height)
                 # Usar el color original del horizonte (sin oscurecer) para mejor visibilidad
                 painter.setPen(QPen(color, 1.0))
-                painter.setBrush(Qt.NoBrush)
+                painter.setBrush(Qt.BrushStyle.NoBrush)
                 painter.drawPath(horizon_path)
                 painter.restore()
 
@@ -1285,7 +1285,7 @@ class DEMProfileCanvas(QWidget):
         fill_path.closeSubpath()
 
         painter.setBrush(QBrush(self.surface_fill))
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.drawPath(fill_path)
         painter.restore()
 
@@ -1307,7 +1307,7 @@ class DEMProfileCanvas(QWidget):
                 except Exception:
                     continue
 
-                painter.setPen(QPen(QColor(0, 100, 200, 60), 1, Qt.DashLine))
+                painter.setPen(QPen(QColor(0, 100, 200, 60), 1, Qt.PenStyle.DashLine))
                 painter.drawLine(int(x_start), draw_top, int(x_start), draw_bottom)
                 painter.drawLine(int(x_end), draw_top, int(x_end), draw_bottom)
 
@@ -1325,7 +1325,7 @@ class DEMProfileCanvas(QWidget):
                     draw_top - 16,
                     max(0, int(x_end - x_start)),
                     14,
-                    Qt.AlignCenter,
+                    Qt.AlignmentFlag.AlignCenter,
                     feature_text,
                 )
 
@@ -1378,7 +1378,7 @@ class DEMProfileCanvas(QWidget):
                     int(legend_y + 1),
                     int(legend_width - 10),
                     14,
-                    Qt.AlignLeft | Qt.AlignVCenter,
+                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                     "Horizontes",
                 )
 
@@ -1397,7 +1397,7 @@ class DEMProfileCanvas(QWidget):
                         int(item_y),
                         int(legend_width - 25),
                         14,
-                        Qt.AlignLeft | Qt.AlignVCenter,
+                        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                         name,
                     )
 
@@ -1423,7 +1423,7 @@ class DEMProfileCanvas(QWidget):
         except Exception:
             info_text = "Perfil DEM"
         painter.drawText(
-            draw_left, 5, draw_width, 20, Qt.AlignLeft | Qt.AlignTop, info_text
+            draw_left, 5, draw_width, 20, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, info_text
         )
 
 
@@ -1579,8 +1579,8 @@ class DEMProfilePanel(QWidget):
         # Scroll area para navegación del perfil
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         scroll_area.setMinimumHeight(300)
 
         self.canvas = DEMProfileCanvas()

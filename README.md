@@ -363,7 +363,12 @@ Por favor reporta errores en: https://github.com/Felipe-Flores-creator/SoilTool/
 
 ## 🔄 Historial de Versiones
 
-### v1.0.4 (Actual)
+### v1.0.5 (Actual)
+- ✅ Compatible con QGIS 4 (Qt6) y QGIS 3
+- ✅ Corregido congelamiento al agrupar paneles en pestañas
+- ✅ Corregido muestreo del DEM en el perfil topográfico
+
+### v1.0.4
 - ✅ Gestión completa de horizontes con botones
 - ✅ Materiales predefinidos y personalizados
 - ✅ Almacenamiento en atributos del feature

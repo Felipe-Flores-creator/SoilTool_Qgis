@@ -160,3 +160,8 @@ cython_debug/
 *.bak
 .directory
 .DS_Store
+
+# --- SoilTool ---
+# Paquetes generados para QGIS (se crean en ../SoilTool_QGIS con package_plugin.py)
+*.zip
+*.zip_*

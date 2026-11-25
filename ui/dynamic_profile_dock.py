@@ -47,7 +47,7 @@ class DynamicProfileDock(QDockWidget):
         self.points_data = []
         self.line_geometry = None
         self.map_crs = None
-        self.setAllowedAreas(Qt.TopDockWidgetArea | Qt.BottomDockWidgetArea)
+        self.setAllowedAreas(Qt.DockWidgetArea.TopDockWidgetArea | Qt.DockWidgetArea.BottomDockWidgetArea)
         self.setMinimumHeight(280)
 
         # --- Marcadores espaciales en el mapa ---
@@ -116,7 +116,7 @@ class DynamicProfileDock(QDockWidget):
         # Canvas de Matplotlib
         self.figure = Figure(tight_layout=True)
         self.canvas = FigureCanvas(self.figure)
-        self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.layout.addWidget(self.canvas, 1)
 
         # Barra de herramientas de Matplotlib

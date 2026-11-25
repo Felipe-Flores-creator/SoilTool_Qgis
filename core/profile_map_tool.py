@@ -46,7 +46,7 @@ class ProfileMapTool(QgsMapTool):
         self.line_color = QColor(255, 0, 0, 200)
         self.line_width = 2
 
-        self.setCursor(Qt.CrossCursor)
+        self.setCursor(Qt.CursorShape.CrossCursor)
 
         # Bandera para evitar recursión de paint events durante actualización de rubber bands
         self._updating_rubber_band = False
@@ -106,7 +106,7 @@ class ProfileMapTool(QgsMapTool):
         self.is_drawing = False
 
     def canvasPressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             map_point = self.toMapCoordinates(event.pos())
 
             if not self.is_drawing:
@@ -122,7 +122,7 @@ class ProfileMapTool(QgsMapTool):
                 self.rubber_band.addPoint(map_point)
                 self.pointAdded.emit(len(self.points))
 
-        elif event.button() == Qt.RightButton:
+        elif event.button() == Qt.MouseButton.RightButton:
             if self.is_drawing:
                 self.finish_profile()
 
@@ -146,15 +146,15 @@ class ProfileMapTool(QgsMapTool):
     def _show_error_dialog(self, title, message, detailed_text=None):
         """Muestra un diálogo de error simple. Sin código basura."""
         msg = QMessageBox(self.canvas)
-        msg.setIcon(QMessageBox.Warning)
+        msg.setIcon(QMessageBox.Icon.Warning)
         msg.setWindowTitle(title)
         msg.setText(message)
         if detailed_text:
             msg.setDetailedText(detailed_text)
-        msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Help)
-        result = msg.exec_()
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Help)
+        result = msg.exec()
 
-        if result == QMessageBox.Help and detailed_text:
+        if result == QMessageBox.StandardButton.Help and detailed_text:
             try:
                 clipboard = QApplication.clipboard()
                 clipboard.setText(detailed_text)

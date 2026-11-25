@@ -83,7 +83,7 @@ class ExplorerDockEventFilter(QObject):
     def eventFilter(self, obj, event):
         """Procesa eventos del dock del explorador."""
         # Detectar cambios de visibilidad
-        if event.type() == QEvent.Show:
+        if event.type() == QEvent.Type.Show:
             if not self.last_visible:
                 self.last_visible = True
                 if self.panel and hasattr(self.panel, "load_explorer_features"):
@@ -92,7 +92,7 @@ class ExplorerDockEventFilter(QObject):
                             self.panel.load_explorer_features()
                     except:
                         pass
-        elif event.type() == QEvent.Hide:
+        elif event.type() == QEvent.Type.Hide:
             self.last_visible = False
 
         return False  # Permitir que el evento continúe procesándose
@@ -163,7 +163,7 @@ class ProfilePanel(QWidget):
         # --- 2. EDITOR DE PERFIL (Este propio widget) ---
         self.scroll_area = QScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setFrameShape(QFrame.NoFrame)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
 
         scroll_content = QWidget()
         editor_layout = QVBoxLayout(scroll_content)
@@ -601,8 +601,13 @@ class ProfilePanel(QWidget):
                 visible_docks.append(self.dock_explorer)
 
             if len(visible_docks) >= 2:
-                main_window.tabifyDockWidget(self.dock_editor, visible_docks[0])
-                main_window.tabifyDockWidget(visible_docks[0], visible_docks[1])
+                # Tabificar sólo los docks que aún no están en el grupo del editor.
+                # tabifyDockWidget emite visibilityChanged, que vuelve a llamar a este
+                # método: sin esta comprobación se produce un bucle infinito (Qt6).
+                tabbed = main_window.tabifiedDockWidgets(self.dock_editor)
+                for dock in visible_docks:
+                    if dock not in tabbed:
+                        main_window.tabifyDockWidget(self.dock_editor, dock)
         except Exception:
             # Captura defensiva: si Qt ya destruyó algún widget, no crashear
             pass
@@ -654,7 +659,7 @@ class ProfilePanel(QWidget):
         dialog.top_spin.setValue(default_top)
         dialog.bottom_spin.setValue(default_bottom)
 
-        if dialog.exec_() == HorizonDialog.Accepted:
+        if dialog.exec() == HorizonDialog.DialogCode.Accepted:
             new_horizon = dialog.get_horizon()
 
             # Si auto-encadenar está activo, ajustamos el nuevo horizonte
@@ -700,7 +705,7 @@ class ProfilePanel(QWidget):
 
         dialog = HorizonDialog(self, self.horizons[index])
 
-        if dialog.exec_() == HorizonDialog.Accepted:
+        if dialog.exec() == HorizonDialog.DialogCode.Accepted:
             new_horizon = dialog.get_horizon()
             self.horizons[index] = new_horizon
 
@@ -736,11 +741,11 @@ class ProfilePanel(QWidget):
             self,
             "Confirmar eliminación",
             f"¿Está seguro de eliminar el horizonte '{self.horizons[index].name}'?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
 
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             # ELIMINADO GUARDADO AUTOMÁTICO - Ahora se usa el botón "Guardar Perfil"
             self.horizons.pop(index)
             self.update_ui()
@@ -758,11 +763,11 @@ class ProfilePanel(QWidget):
             self,
             "Confirmar eliminación",
             "¿Está seguro de eliminar TODOS los horizontes del perfil?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
 
-        if reply == QMessageBox.Yes:
+        if reply == QMessageBox.StandardButton.Yes:
             # ELIMINADO GUARDADO AUTOMÁTICO - Ahora se usa el botón "Guardar Perfil"
             self.horizons = []
             self.update_ui()
@@ -933,7 +938,7 @@ class ProfilePanel(QWidget):
                         break
 
             item = QListWidgetItem(display_name)
-            item.setData(Qt.UserRole, fid)
+            item.setData(Qt.ItemDataRole.UserRole, fid)
 
             if has_profile:
                 item.setIcon(QIcon())  # Podríamos añadir un icono de perfil
@@ -965,7 +970,7 @@ class ProfilePanel(QWidget):
 
     def on_explorer_item_double_clicked(self, item):
         """Carga la entidad seleccionada desde el explorador."""
-        fid = item.data(Qt.UserRole)
+        fid = item.data(Qt.ItemDataRole.UserRole)
         if not self.current_layer:
             return
 

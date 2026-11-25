@@ -67,7 +67,7 @@ class HorizonDialog(QDialog):
         # Contenedor con barra de desplazamiento para el formulario
         scroll_area = QScrollArea(self)
         scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QFrame.NoFrame)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
 
         scroll_content = QWidget()
         form_layout = QFormLayout(scroll_content)
@@ -210,7 +210,7 @@ class HorizonDialog(QDialog):
         layout.addWidget(scroll_area)
 
         # Botones
-        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)

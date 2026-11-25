@@ -19,6 +19,7 @@ from qgis.core import (
     QgsFeature,
     QgsVectorLayer,
     QgsProject,
+    QgsRaster,
     QgsRasterDataProvider,
     QgsRasterBandStats,
     QgsCoordinateTransform,
@@ -225,7 +226,7 @@ class DEMProfileEngine:
         if not provider:
             return None
         try:
-            result = provider.identify(point, QgsRasterDataProvider.IdentifyFormatValue)
+            result = provider.identify(point, QgsRaster.IdentifyFormatValue)
             if result and result.isValid():
                 val = result.results().get(band)
                 if val is not None and not np.isnan(val) and np.isfinite(val):

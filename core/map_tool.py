@@ -15,12 +15,12 @@ class SoilMapTool(QgsMapToolIdentify):
         super(SoilMapTool, self).__init__(canvas)
         self.canvas = canvas
         self.target_layer = None
-        self.setCursor(Qt.CrossCursor)
+        self.setCursor(Qt.CursorShape.CrossCursor)
 
         # Etiqueta para la previsualización del perfil
         self.preview_label = QLabel(self.canvas)
         self.preview_label.setFixedSize(60, 60)
-        self.preview_label.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.preview_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.preview_label.hide()
         self.last_hovered_fid = None
 
@@ -115,14 +115,14 @@ class SoilMapTool(QgsMapToolIdentify):
     def _draw_profile_preview(self, horizons):
         # Crear un pixmap transparente
         pixmap = QPixmap(60, 60)
-        pixmap.fill(Qt.transparent)
+        pixmap.fill(Qt.GlobalColor.transparent)
 
         painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         # Fondo blanco semitransparente circular
         painter.setBrush(QColor(255, 255, 255, 180))
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(0, 0, 60, 60)
 
         # Máscara circular para los horizontes
@@ -145,7 +145,7 @@ class SoilMapTool(QgsMapToolIdentify):
         painter.setClipping(False)
         # Dibujar borde para delimitar el círculo
         painter.setPen(QColor(50, 50, 50))
-        painter.setBrush(Qt.NoBrush)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawEllipse(1, 1, 58, 58)  # 1 px hacia adentro
 
         painter.end()

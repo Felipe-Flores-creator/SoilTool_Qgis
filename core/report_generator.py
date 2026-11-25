@@ -61,8 +61,8 @@ class ReportGenerator:
                 f = title.font()
                 f.setBold(True)
                 title.setFont(f)
-                title.setHAlign(Qt.AlignCenter)
-                title.setVAlign(Qt.AlignVCenter)
+                title.setHAlign(Qt.AlignmentFlag.AlignCenter)
+                title.setVAlign(Qt.AlignmentFlag.AlignVCenter)
                 title.attemptMove(
                     QgsLayoutPoint(margin, 5, QgsUnitTypes.LayoutMillimeters), True, False, page_idx
                 )
@@ -231,7 +231,7 @@ class ReportGenerator:
                 f_foot = footer.font()
                 f_foot.setItalic(True)
                 footer.setFont(f_foot)
-                footer.setHAlign(Qt.AlignRight)
+                footer.setHAlign(Qt.AlignmentFlag.AlignRight)
                 footer.attemptMove(
                     QgsLayoutPoint(margin, page_height - 15, QgsUnitTypes.LayoutMillimeters), True, False, p_idx
                 )

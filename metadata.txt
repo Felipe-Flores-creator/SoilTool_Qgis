@@ -2,8 +2,15 @@
 name=SoilTool
 description=Interactive soil profile visualization tool for QGIS.
 about=Scientific tool for visualising and managing soil profiles directly in QGIS vector layers. It allows adding horizons with custom properties like texture, color, and boundaries. No external Python libraries required.
-version=1.0.4
+version=1.0.5
 qgisMinimumVersion=3.0
+qgisMaximumVersion=4.99
+supportsQt6=True
+changelog=
+    1.0.5
+    - Compatibilidad con QGIS 4 (Qt6), manteniendo soporte para QGIS 3
+    - Corregido bucle infinito al agrupar paneles en pestañas que podía congelar QGIS
+    - Corregido muestreo del DEM en el perfil topográfico (QGIS 4)
 author=Felipe Flores
 email=felipe.ignacio.geo@gmail.com
 homepage=https://github.com/Felipe-Flores-creator

@@ -45,8 +45,10 @@ Plugin para QGIS que permite la visualización interactiva de perfiles de suelo 
 
 ## 📋 Requisitos
 
-- QGIS 3.0 o superior
-- Python 3.x
+- QGIS 3.0 o superior (compatible con QGIS 4)
+- NumPy y Matplotlib: vienen incluidas con QGIS en Windows y macOS. En Linux,
+  si faltan, instala `python3-numpy` y `python3-matplotlib`.
+  Matplotlib solo se necesita para el perfil topográfico dinámico.
 
 ## 🚀 Instalación
 
@@ -354,12 +356,12 @@ Este proyecto está bajo la licencia GPL v2.
 
 ## 🐛 Reporte de Errores
 
-Por favor reporta errores en: https://github.com/Felipe-Flores-creator/SoilTool/issues
+Por favor reporta errores en: https://github.com/Felipe-Flores-creator/SoilTool_Qgis/issues
 
 ## 📧 Contacto
 
 - Email: felipe.ignacio.geo@gmail.com
-- Repositorio: https://github.com/Felipe-Flores-creator/SoilTool
+- Repositorio: https://github.com/Felipe-Flores-creator/SoilTool_Qgis
 
 ## 🔄 Historial de Versiones
 

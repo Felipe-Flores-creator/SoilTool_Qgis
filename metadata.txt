@@ -1,7 +1,7 @@
 [general]
 name=SoilTool
 description=Interactive soil profile visualization tool for QGIS.
-about=Scientific tool for visualising and managing soil profiles directly in QGIS vector layers. It allows adding horizons with custom properties like texture, color, and boundaries. No external Python libraries required.
+about=Scientific tool for visualising and managing soil profiles directly in QGIS vector layers. It allows adding horizons with custom properties like texture, color, and boundaries. Uses NumPy and Matplotlib, which are bundled with QGIS on Windows and macOS (on Linux, install python3-numpy and python3-matplotlib if missing).
 version=1.0.5
 qgisMinimumVersion=3.0
 qgisMaximumVersion=4.99

@@ -12,6 +12,10 @@ changelog=
     - Vista previa del cursor como miniperfil rectangular con simbología
     - Informe PDF profesional: mapa de ubicación, fichas por perfil, simbología
       litológica, tabla de horizontes y leyenda de materiales y límites
+    - Perfil topográfico renovado: horizontes estilizados bajo el terreno,
+      columnas del perfil a escala real en cada cruce, exageración del suelo,
+      unidades rotuladas, pendientes, estadísticas, lectura bajo el cursor,
+      DEM bilineal, distancias en metros reales y exportación PNG/PDF/SVG
     1.0.5
     - Compatibilidad con QGIS 4 (Qt6), manteniendo soporte para QGIS 3
     - Corregido bucle infinito al agrupar paneles en pestañas que podía congelar QGIS

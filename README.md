@@ -370,6 +370,8 @@ Por favor reporta errores en: https://github.com/Felipe-Flores-creator/SoilTool_
 - ✅ Vista previa del cursor como miniperfil rectangular con colores y patrones
 - ✅ Informe PDF profesional: mapa de ubicación de perfiles, ficha por perfil con
   columna, localización, tabla de horizontes y simbología edafológica/estratigráfica
+- ✅ Perfil topográfico renovado: el perfil edafológico se ve bajo el terreno donde la
+  línea cruza cada unidad, con su columna a escala real, pendientes y estadísticas
 
 ### v1.0.5
 - ✅ Compatible con QGIS 4 (Qt6) y QGIS 3

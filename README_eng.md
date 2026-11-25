@@ -372,6 +372,8 @@ Please report bugs at: https://github.com/Felipe-Flores-creator/SoilTool_Qgis/is
 - ✅ Cursor preview as a rectangular mini soil profile with colours and patterns
 - ✅ Professional PDF report: profile location map, one sheet per profile with
   column, locator map, horizon table and soil/stratigraphic symbology
+- ✅ Redesigned topographic profile: the soil profile is drawn under the terrain where
+  the line crosses each unit, with a true-scale column, slopes and statistics
 
 ### v1.0.5
 - ✅ Compatible with QGIS 4 (Qt6) and QGIS 3

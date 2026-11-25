@@ -828,7 +828,10 @@ class ReportGenerator:
             da = QgsDistanceArea()
             project = QgsProject.instance()
             da.setSourceCrs(crs, project.transformContext())
-            da.setEllipsoid(project.ellipsoid() or "EPSG:7030")
+            ellipsoid = project.ellipsoid()
+            if not ellipsoid or ellipsoid.upper() == "NONE":
+                ellipsoid = "EPSG:7030"  # WGS84
+            da.setEllipsoid(ellipsoid)
             a = da.measureArea(geom)
             if a <= 0:
                 return None

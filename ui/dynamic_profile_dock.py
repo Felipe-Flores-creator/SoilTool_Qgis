@@ -1,35 +1,45 @@
 # -*- coding: utf-8 -*-
 """
-Panel Dock de Perfil Topográfico Dinámico con Matplotlib.
-Permite visualizar la topografía y las capas edafológicas intersectadas en tiempo real.
-Incluye localizador espacial: al mover el mouse sobre el perfil, se marca la posición
-en el mapa QGIS; al hacer zoom, se sombrea el tramo visible del perfil.
+Panel de Perfil Topográfico con estratigrafía edafológica (Matplotlib).
+
+- Trazado de la línea A–A' en el mapa; la línea y sus extremos quedan marcados.
+- Horizontes de suelo con color, patrón del material y límites según su nitidez.
+- Exageración de la profundidad del suelo (para que los horizontes se vean
+  frente al relieve) y exageración vertical del gráfico.
+- Rótulos de las unidades de suelo atravesadas, cuadro de estadísticas y,
+  opcionalmente, gráfico de pendientes por clases.
+- Lectura bajo el cursor (distancia, cota, unidad y horizonte) sincronizada con
+  un marcador en el mapa; el zoom del gráfico sombrea el tramo en el mapa.
+- Exportación a PNG / PDF / SVG a 300 ppp.
 """
 
+import math
+
+import numpy as np
+from qgis.PyQt.QtCore import Qt, QTimer
+from qgis.PyQt.QtGui import QColor, QImage
 from qgis.PyQt.QtWidgets import (
+    QCheckBox,
+    QComboBox,
     QDockWidget,
-    QWidget,
-    QVBoxLayout,
+    QDoubleSpinBox,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
-    QDoubleSpinBox,
     QSizePolicy,
+    QVBoxLayout,
+    QWidget,
 )
-from qgis.PyQt.QtCore import Qt
-from qgis.gui import QgsMapLayerComboBox, QgsRubberBand
-from qgis.core import (
-    QgsMapLayerProxyModel,
-    QgsGeometry,
-    QgsPointXY,
-)
-from qgis.PyQt.QtGui import QColor
+from qgis.core import QgsGeometry, QgsMapLayerProxyModel, QgsPointXY
+from qgis.gui import QgsMapLayerComboBox, QgsRubberBand, QgsVertexMarker
 
-
-import matplotlib
-import matplotlib.lines
 import matplotlib.patches as mpatches
 from matplotlib.figure import Figure
+from matplotlib.patches import ConnectionPatch
+from matplotlib.lines import Line2D
+from matplotlib.transforms import blended_transform_factory, offset_copy
 
 try:  # matplotlib >= 3.5: backend Qt genérico (Qt5 en QGIS 3, Qt6 en QGIS 4)
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
@@ -43,131 +53,379 @@ except ImportError:  # matplotlib antiguo (QGIS 3 viejos)
     )
 
 from ..core.dynamic_profile_engine import DynamicProfileEngine
+from ..core.profile_engine import ProfileGeometry
+from ..core.soil_symbology import pattern_key, render_column_image
+
+# Patrones de matplotlib equivalentes a la simbología del informe PDF
+HATCHES = {
+    "sand": "..",
+    "clay": "---",
+    "silt": "--",
+    "loam": "-.",
+    "clay_loam": "--..",
+    "silty_clay": "---",
+    "sandy_loam": "..-",
+    "sandy_clay": "..--",
+    "gravel": "oo",
+    "rock": "x",
+    "limestone": "|-",
+    "schist": "\\\\",
+    "organic": "++",
+    "peat": "++",
+    "coal": "xxx",
+    "ash": "**",
+    "gypsum": "xx",
+    "salt": "+",
+    "generic": "",
+}
+
+BOUNDARY_STYLE = {
+    "abrupt": dict(linestyle="-", linewidth=1.1),
+    "clear": dict(linestyle="-", linewidth=0.7),
+    "gradual": dict(linestyle=(0, (4, 2)), linewidth=0.7),
+    "diffuse": dict(linestyle=(0, (1, 1.5)), linewidth=0.8),
+}
+BOUNDARY_NAMES = {
+    "abrupt": "Límite abrupto",
+    "clear": "Límite claro",
+    "gradual": "Límite gradual",
+    "diffuse": "Límite difuso",
+}
+
+SLOPE_CLASSES = [  # (hasta %, color, etiqueta)
+    (5, "#81c784", "0–5 %"),
+    (15, "#fff176", "5–15 %"),
+    (30, "#ffb74d", "15–30 %"),
+    (1e9, "#e57373", "> 30 %"),
+]
+
+C_TERRAIN = "#3e2723"
+C_SUBSTRATE = "#eceff1"
+
+
+def _qimage_to_rgba(img):
+    """QImage -> array numpy (h, w, 4) uint8 para imshow."""
+    img = img.convertToFormat(QImage.Format.Format_RGBA8888)
+    w, h = img.width(), img.height()
+    ptr = img.constBits()
+    size = img.sizeInBytes() if hasattr(img, "sizeInBytes") else img.byteCount()
+    ptr.setsize(size)
+    arr = np.frombuffer(ptr, np.uint8).reshape(h, img.bytesPerLine())
+    return arr[:, : w * 4].reshape(h, w, 4).copy()
+
+
+def _draped_depths(horizons, n):
+    """Profundidades (cm) estilizadas de cada límite a lo largo de un tramo.
+
+    Usa la misma geometría que el Lienzo 2D (ruido según el tipo de límite,
+    plegamiento, falla, inclinación y formas editadas con el lápiz) a la escala
+    de referencia del Lienzo (300 px de ancho, 3 px/cm). Devuelve
+    len(horizons) + 1 arrays de n valores (superficie primero).
+    """
+    W, S = 300.0, 3.0
+    bounds = ProfileGeometry.compute_boundaries(horizons, W, S)
+    t = np.linspace(0.0, 1.0, max(n, 1))
+    out = []
+    for i, pts in enumerate(bounds):
+        bx = np.array([p.x() for p in pts]) / W
+        by = np.array([p.y() for p in pts]) / S
+        if i == 0 and not horizons[0].top_offsets:
+            by = np.zeros_like(by)  # la superficie es el terreno
+        out.append(np.interp(t, bx, by))
+    for i in range(1, len(out)):  # nunca por encima del límite anterior
+        out[i] = np.maximum(out[i], out[i - 1] + 0.2)
+    return out
+
+
+def _nice_factor(x):
+    for f in (1, 2, 5, 10, 20, 50, 100, 200, 500, 1000):
+        if f >= x:
+            return f
+    return 1000
 
 
 class DynamicProfileDock(QDockWidget):
-    """QDockWidget inferior para renderizar perfiles dinámicos con Matplotlib."""
+    """Dock inferior con el perfil topográfico y la estratigrafía edafológica."""
 
     def __init__(self, parent=None, iface=None):
-        super().__init__("SoilTool - Perfil Topográfico Dinámico (Matplotlib)", parent)
+        super().__init__("SoilTool - Perfil Topográfico", parent)
         self.iface = iface
         self.points_data = []
         self.line_geometry = None
         self.map_crs = None
+        self.total_m = 0.0
+        self.map_tool = None
         self.setAllowedAreas(
             Qt.DockWidgetArea.TopDockWidgetArea | Qt.DockWidgetArea.BottomDockWidgetArea
         )
-        self.setMinimumHeight(280)
+        self.setMinimumHeight(300)
 
-        # --- Marcadores espaciales en el mapa ---
-        self.position_marker = None  # QgsRubberBand para punto indicador
-        self.view_extent_band = None  # QgsRubberBand para área visible
-        self._connection_active = False  # evita bucles de actualización
+        # Marcadores en el mapa
+        self.position_marker = None
+        self.view_extent_band = None
+        self.line_band = None
+        self.end_markers = []
+
+        # Artistas del cursor (lectura)
+        self._ax = None
+        self._ax_slope = None
+        self._cursor_artists = []
+        self._soil_exag = 1.0
+
+        # Redibujar tras cambiar el tamaño del panel (columnas y márgenes en px)
+        self._resize_timer = QTimer(self)
+        self._resize_timer.setSingleShot(True)
+        self._resize_timer.setInterval(250)
+        self._resize_timer.timeout.connect(self._replot_if_data)
 
         self.setup_ui()
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.points_data:
+            self._resize_timer.start()
+
+    def _replot_if_data(self):
+        if self.points_data:
+            self.plot_profile()
+
+    # ------------------------------------------------------------------
+    # Interfaz
+    # ------------------------------------------------------------------
     def setup_ui(self):
-        # Widget contenedor principal
         self.main_widget = QWidget()
-        self.layout = QVBoxLayout(self.main_widget)
-        self.layout.setContentsMargins(5, 5, 5, 5)
-        self.layout.setSpacing(4)
+        lay = QVBoxLayout(self.main_widget)
+        lay.setContentsMargins(5, 4, 5, 2)
+        lay.setSpacing(3)
 
-        # Panel de control superior
-        self.control_layout = QHBoxLayout()
-        self.control_layout.setSpacing(10)
-
-        # Selección de DEM
-        self.control_layout.addWidget(QLabel("DEM:"))
+        # Fila 1: datos y acciones
+        row1 = QHBoxLayout()
+        row1.setSpacing(6)
+        row1.addWidget(QLabel("DEM:"))
         self.dem_combo = QgsMapLayerComboBox()
         self.dem_combo.setFilters(QgsMapLayerProxyModel.RasterLayer)
-        self.dem_combo.setFixedWidth(140)
-        self.control_layout.addWidget(self.dem_combo)
+        self.dem_combo.setMinimumWidth(130)
+        row1.addWidget(self.dem_combo)
 
-        # Selección de Capa Edafológica
-        self.control_layout.addWidget(QLabel("Capa de Suelos:"))
+        row1.addWidget(QLabel("Suelos:"))
         self.soils_combo = QgsMapLayerComboBox()
         self.soils_combo.setFilters(QgsMapLayerProxyModel.PolygonLayer)
-        self.soils_combo.setFixedWidth(140)
-        self.control_layout.addWidget(self.soils_combo)
+        self.soils_combo.setMinimumWidth(130)
+        row1.addWidget(self.soils_combo)
 
-        # Selector de unidad de distancia
-        self.control_layout.addWidget(QLabel("Unidad:"))
-        from qgis.PyQt.QtWidgets import QComboBox
-
-        self.unit_combo = QComboBox()
-        self.unit_combo.addItems(["Metros (m)", "Centímetros (cm)"])
-        self.unit_combo.setFixedWidth(120)
-        self.unit_combo.currentIndexChanged.connect(self.on_unit_changed)
-        self.control_layout.addWidget(self.unit_combo)
-
-        # Paso de muestreo
-        self.control_layout.addWidget(QLabel("Paso Muestreo (m):"))
+        row1.addWidget(QLabel("Paso (m):"))
         self.step_spin = QDoubleSpinBox()
-        self.step_spin.setRange(1.0, 500.0)
+        self.step_spin.setRange(0.5, 500.0)
         self.step_spin.setValue(5.0)
-        self.step_spin.setSingleStep(1.0)
-        self.step_spin.setFixedWidth(70)
-        self.control_layout.addWidget(self.step_spin)
+        self.step_spin.setDecimals(1)
+        self.step_spin.setFixedWidth(64)
+        self.step_spin.setToolTip("Distancia entre muestras a lo largo de la línea")
+        row1.addWidget(self.step_spin)
 
-        # Botón para dibujar perfil
-        self.draw_btn = QPushButton("✏️ Trazar Perfil")
+        self.draw_btn = QPushButton("✏  Trazar perfil")
         self.draw_btn.setCheckable(True)
+        self.draw_btn.setToolTip(
+            "Clic izquierdo: añadir vértice\nDoble clic o clic derecho: terminar"
+        )
         self.draw_btn.setStyleSheet(
-            "font-weight: bold; background-color: #3498db; color: white;"
+            "QPushButton { font-weight: bold; background-color: #5d4037; color: white;"
+            " padding: 3px 10px; border-radius: 3px; }"
+            "QPushButton:checked { background-color: #e65100; }"
         )
         self.draw_btn.clicked.connect(self.toggle_draw_tool)
-        self.control_layout.addWidget(self.draw_btn)
+        row1.addWidget(self.draw_btn)
 
-        self.control_layout.addStretch()
-        self.layout.addLayout(self.control_layout)
+        self.recalc_btn = QPushButton("⟳ Recalcular")
+        self.recalc_btn.setToolTip(
+            "Vuelve a muestrear la misma línea (p. ej. tras cambiar el DEM, la capa "
+            "de suelos o el paso)"
+        )
+        self.recalc_btn.clicked.connect(self.recalculate)
+        row1.addWidget(self.recalc_btn)
 
-        # Canvas de Matplotlib
-        self.figure = Figure(tight_layout=True)
+        self.clear_btn = QPushButton("Limpiar")
+        self.clear_btn.clicked.connect(self.clear_profile)
+        row1.addWidget(self.clear_btn)
+
+        self.export_btn = QPushButton("Exportar…")
+        self.export_btn.setToolTip("Guarda el gráfico en PNG, PDF o SVG (300 ppp)")
+        self.export_btn.clicked.connect(self.export_dialog)
+        row1.addWidget(self.export_btn)
+        row1.addStretch()
+        lay.addLayout(row1)
+
+        # Fila 2: opciones de visualización
+        row2 = QHBoxLayout()
+        row2.setSpacing(6)
+        row2.addWidget(QLabel("Exag. suelo:"))
+        self.soil_exag_combo = QComboBox()
+        self.soil_exag_combo.addItem("Auto", 0)
+        for f in (1, 2, 5, 10, 20, 50, 100, 200):
+            self.soil_exag_combo.addItem(f"×{f}", f)
+        self.soil_exag_combo.setToolTip(
+            "Multiplica la profundidad de los horizontes para que se vean frente "
+            "al relieve. 'Auto' la ajusta a ~15 % del desnivel."
+        )
+        row2.addWidget(self.soil_exag_combo)
+
+        row2.addWidget(QLabel("Exag. vertical:"))
+        self.ve_combo = QComboBox()
+        self.ve_combo.addItem("Ajustar", 0)
+        for f in (1, 2, 5, 10, 20):
+            self.ve_combo.addItem(f"×{f}", f)
+        self.ve_combo.setToolTip(
+            "Relación entre escala vertical y horizontal del gráfico"
+        )
+        row2.addWidget(self.ve_combo)
+
+        row2.addWidget(QLabel("Distancia:"))
+        self.unit_combo = QComboBox()
+        self.unit_combo.addItems(["Metros (m)", "Kilómetros (km)"])
+        row2.addWidget(self.unit_combo)
+
+        self.units_check = QCheckBox("Unidades de suelo")
+        self.units_check.setChecked(True)
+        self.patterns_check = QCheckBox("Patrones")
+        self.patterns_check.setChecked(True)
+        self.slope_check = QCheckBox("Pendiente")
+        self.slope_check.setChecked(True)
+        self.columns_check = QCheckBox("Columnas a escala real")
+        self.columns_check.setChecked(True)
+        self.columns_check.setToolTip(
+            "Muestra, sobre cada cruce con una unidad de suelo, la columna del "
+            "perfil edafológico con su profundidad real (regla en cm)"
+        )
+        for w in (
+            self.units_check,
+            self.patterns_check,
+            self.slope_check,
+            self.columns_check,
+        ):
+            row2.addWidget(w)
+        row2.addStretch()
+        self.status_label = QLabel("Elige un DEM y pulsa «Trazar perfil».")
+        self.status_label.setStyleSheet("color: #6d4c41;")
+        row2.addWidget(self.status_label)
+        lay.addLayout(row2)
+
+        for combo in (self.soil_exag_combo, self.ve_combo, self.unit_combo):
+            combo.currentIndexChanged.connect(self.plot_profile)
+        for chk in (
+            self.units_check,
+            self.patterns_check,
+            self.slope_check,
+            self.columns_check,
+        ):
+            chk.toggled.connect(self.plot_profile)
+
+        # Gráfico
+        self.figure = Figure(facecolor="white")
         self.canvas = FigureCanvas(self.figure)
         self.canvas.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
-        self.layout.addWidget(self.canvas, 1)
-
-        # Barra de herramientas de Matplotlib
+        lay.addWidget(self.canvas, 1)
         self.toolbar = NavigationToolbar(self.canvas, self.main_widget)
-        self.toolbar.pan()
-        self.layout.addWidget(self.toolbar)
-
+        self.toolbar.setIconSize(self.toolbar.iconSize() * 0.8)
+        lay.addWidget(self.toolbar)
         self.setWidget(self.main_widget)
 
-        # Conectar eventos de mouse de Matplotlib para localización espacial
         self.canvas.mpl_connect("motion_notify_event", self._on_plot_mouse_move)
+        self.canvas.mpl_connect("axes_leave_event", self._on_plot_leave)
         self.canvas.mpl_connect("draw_event", self._on_plot_redraw)
-        # Conectar la señal de navegación (zoom/pan) para actualizar el área visible
-        self.toolbar._actions_triggered = []  # para prevenir errores
-        self.toolbar._nav_stack  # forzar inicialización del stack
-        try:
-            self.toolbar._connected = True
-        except Exception:
-            pass
+        self._update_buttons()
+        self._draw_placeholder()
 
+    def _update_buttons(self):
+        has = bool(self.points_data)
+        self.recalc_btn.setEnabled(self.line_geometry is not None)
+        self.clear_btn.setEnabled(has)
+        self.export_btn.setEnabled(has)
+
+    def _draw_placeholder(self):
+        self.figure.clear()
+        ax = self.figure.add_subplot(111)
+        ax.axis("off")
+        ax.text(
+            0.5,
+            0.5,
+            "Traza una línea en el mapa para generar el perfil topográfico\n"
+            "Clic izquierdo: añadir vértice  ·  Doble clic / clic derecho: terminar",
+            ha="center",
+            va="center",
+            color="#8d6e63",
+            fontsize=9,
+            transform=ax.transAxes,
+        )
+        self._ax = None
+        self.canvas.draw_idle()
+
+    # ------------------------------------------------------------------
+    # Marcadores en el mapa
+    # ------------------------------------------------------------------
     def _init_rubber_bands(self):
-        """Inicializa las bandas de goma en el canvas de QGIS si es necesario."""
         if not self.iface:
             return
         canvas = self.iface.mapCanvas()
         if self.position_marker is None:
-            self.position_marker = QgsRubberBand(canvas)
-            self.position_marker.setColor(QColor(255, 0, 0, 200))
-            self.position_marker.setWidth(4)
-            self.position_marker.setIconSize(12)
+            m = QgsVertexMarker(canvas)
+            m.setIconType(QgsVertexMarker.ICON_CIRCLE)
+            m.setColor(QColor(230, 81, 0))
+            m.setFillColor(QColor(255, 255, 255, 200))
+            m.setIconSize(12)
+            m.setPenWidth(3)
+            m.hide()
+            self.position_marker = m
         if self.view_extent_band is None:
             self.view_extent_band = QgsRubberBand(canvas)
-            self.view_extent_band.setColor(QColor(0, 150, 255, 30))
-            self.view_extent_band.setWidth(2)
+            self.view_extent_band.setColor(QColor(0, 150, 255, 110))
+            self.view_extent_band.setWidth(7)
+        if self.line_band is None:
+            self.line_band = QgsRubberBand(canvas)
+            self.line_band.setColor(QColor(93, 64, 55, 230))
+            self.line_band.setWidth(2)
+
+    def _show_line_on_map(self):
+        if not self.iface or not self.line_geometry:
+            return
+        self._init_rubber_bands()
+        try:
+            self.line_band.setToGeometry(self.line_geometry, None)
+            self.line_band.show()
+        except RuntimeError:
+            self.line_band = None
+        self._clear_end_markers()
+        pts = self.line_geometry.asPolyline()
+        if len(pts) >= 2:
+            canvas = self.iface.mapCanvas()
+            for pt, icon, color in (
+                (pts[0], QgsVertexMarker.ICON_BOX, QColor(46, 125, 50)),
+                (pts[-1], QgsVertexMarker.ICON_BOX, QColor(198, 40, 40)),
+            ):
+                m = QgsVertexMarker(canvas)
+                m.setCenter(QgsPointXY(pt))
+                m.setIconType(icon)
+                m.setColor(color)
+                m.setFillColor(color)
+                m.setIconSize(10)
+                m.setPenWidth(2)
+                self.end_markers.append(m)
+
+    def _clear_end_markers(self):
+        if self.iface:
+            scene = self.iface.mapCanvas().scene()
+            for m in self.end_markers:
+                try:
+                    scene.removeItem(m)
+                except RuntimeError:
+                    pass
+        self.end_markers = []
 
     def clear_spatial_markers(self):
-        """Limpia los marcadores espaciales del mapa."""
+        """Limpia marcadores de posición y tramo visible (no la línea)."""
         if self.position_marker:
             try:
-                self.position_marker.reset()
+                self.position_marker.hide()
             except RuntimeError:
                 self.position_marker = None
         if self.view_extent_band:
@@ -176,33 +434,47 @@ class DynamicProfileDock(QDockWidget):
             except RuntimeError:
                 self.view_extent_band = None
 
+    def _clear_all_map_items(self):
+        self.clear_spatial_markers()
+        if self.line_band:
+            try:
+                self.line_band.reset()
+            except RuntimeError:
+                self.line_band = None
+        self._clear_end_markers()
+
+    # ------------------------------------------------------------------
+    # Trazado
+    # ------------------------------------------------------------------
     def toggle_draw_tool(self, checked):
-        """Activa o desactiva la herramienta de mapa para trazar el perfil."""
         if not self.iface:
             return
-
         if checked:
             from ..core.profile_map_tool import ProfileMapTool
 
-            # Crear y establecer la herramienta de perfil
             dem_layer = self.dem_combo.currentLayer()
-            soils_layer = self.soils_combo.currentLayer()
-
-            # Instanciar el ProfileMapTool original pero interceptar su finalización
+            if dem_layer is None:
+                QMessageBox.information(
+                    self, "Perfil topográfico", "Selecciona primero una capa DEM."
+                )
+                self.draw_btn.setChecked(False)
+                return
             self.map_tool = ProfileMapTool(self.iface.mapCanvas(), dem_layer)
+            soils_layer = self.soils_combo.currentLayer()
             if soils_layer:
                 self.map_tool.add_vector_layer(soils_layer)
-
             self.map_tool.profileComplete.connect(self.on_profile_drawn)
             self.iface.mapCanvas().setMapTool(self.map_tool)
+            self.status_label.setText(
+                "Clic: añadir vértice · Doble clic / clic derecho: terminar"
+            )
         else:
             self.deactivate_tool()
 
     def deactivate_tool(self):
-        if self.iface:
+        if self.iface and self.map_tool is not None:
             canvas = self.iface.mapCanvas()
-            current_tool = canvas.mapTool()
-            if hasattr(self, "map_tool") and current_tool == self.map_tool:
+            if canvas.mapTool() == self.map_tool:
                 canvas.unsetMapTool(self.map_tool)
                 self.map_tool.cancel_drawing()
         self.draw_btn.blockSignals(True)
@@ -210,296 +482,708 @@ class DynamicProfileDock(QDockWidget):
         self.draw_btn.blockSignals(False)
 
     def on_profile_drawn(self, dem_profile_data):
-        """Manejador al terminar el trazo de la línea de perfil."""
         self.deactivate_tool()
-
-        # Limpiar marcadores anteriores
-        self.clear_spatial_markers()
-
-        # Recuperamos la geometría trazada
         if not dem_profile_data or not dem_profile_data.polyline:
             return
-
         self.line_geometry = QgsGeometry.fromPolylineXY(dem_profile_data.polyline)
-        dem_layer = self.dem_combo.currentLayer()
-        soils_layer = self.soils_combo.currentLayer()
-        step_size = self.step_spin.value()
         self.map_crs = self.iface.mapCanvas().mapSettings().destinationCrs()
+        self.recalculate()
 
-        # Generar perfil dinámico
+    def recalculate(self):
+        """Muestrea de nuevo la línea actual con las capas y el paso actuales."""
+        if not self.line_geometry:
+            return
+        if self.map_crs is None and self.iface:
+            self.map_crs = self.iface.mapCanvas().mapSettings().destinationCrs()
         self.points_data = DynamicProfileEngine.generate_dynamic_profile(
-            dem_layer=dem_layer,
-            soils_layer=soils_layer,
+            dem_layer=self.dem_combo.currentLayer(),
+            soils_layer=self.soils_combo.currentLayer(),
             line_geometry=self.line_geometry,
-            step_size=step_size,
+            step_size=self.step_spin.value(),
             map_crs=self.map_crs,
         )
-
+        self.total_m = self.points_data[-1]["distance"] if self.points_data else 0.0
+        self.clear_spatial_markers()
+        self._show_line_on_map()
         self.plot_profile()
 
-    def _interpolate_point_on_line(self, distance):
-        """
-        Interpola un punto (QgsPointXY) a lo largo de self.line_geometry
-        a la distancia dada (en metros, mismo CRS que la línea).
-        Retorna None si no es posible.
-        """
-        if not self.line_geometry or self.line_geometry.isEmpty():
-            return None
-        try:
-            pt_geom = self.line_geometry.interpolate(distance)
-            if pt_geom and not pt_geom.isEmpty():
-                return pt_geom.asPoint()
-        except Exception:
-            pass
-        return None
+    def clear_profile(self):
+        self.points_data = []
+        self.line_geometry = None
+        self.total_m = 0.0
+        self._clear_all_map_items()
+        self.status_label.setText("Elige un DEM y pulsa «Trazar perfil».")
+        self._draw_placeholder()
+        self._update_buttons()
 
-    def _update_position_marker(self, distance):
-        """Actualiza el marcador de posición en el mapa a la distancia dada."""
+    # ------------------------------------------------------------------
+    # Sincronización gráfico <-> mapa
+    # ------------------------------------------------------------------
+    def _point_at_distance(self, distance_m):
+        if not self.line_geometry or self.total_m <= 0:
+            return None
+        frac = min(max(distance_m / self.total_m, 0.0), 1.0)
+        g = self.line_geometry.interpolate(frac * self.line_geometry.length())
+        return g.asPoint() if g and not g.isEmpty() else None
+
+    def _interpolate_point_on_line(self, distance):
+        """Compatibilidad: punto del mapa a 'distance' metros del inicio."""
+        return self._point_at_distance(distance)
+
+    def _update_position_marker(self, distance_m):
         if not self.iface:
             return
         self._init_rubber_bands()
-        if self.position_marker is None:
+        pt = self._point_at_distance(distance_m)
+        if pt is None or self.position_marker is None:
             return
-
-        pt = self._interpolate_point_on_line(distance)
-        if pt is None:
-            self.position_marker.reset()
-            return
-
         try:
-            self.position_marker.reset()
-            self.position_marker.addPoint(pt)
+            self.position_marker.setCenter(QgsPointXY(pt))
             self.position_marker.show()
         except RuntimeError:
-            pass
+            self.position_marker = None
 
-    def _update_view_extent(self, x_min, x_max):
-        """
-        Sombrea en el mapa el tramo del perfil que corresponde
-        al rango visible en el plot (x_min, x_max en distancia).
-        """
-        if not self.iface or not self.line_geometry:
+    def _update_view_extent(self, d_min, d_max):
+        """Sombrea en el mapa el tramo visible del gráfico (en metros)."""
+        if not self.iface or not self.line_geometry or not self.points_data:
             return
         self._init_rubber_bands()
         if self.view_extent_band is None:
             return
-
         try:
             self.view_extent_band.reset()
         except RuntimeError:
             self.view_extent_band = None
             return
-
-        # Extraer los puntos de la línea original que caen dentro del rango visible
-        if not self.points_data:
-            return
-
-        # Buscar puntos dentro del rango
-        visible_pts = []
-        for pt_data in self.points_data:
-            d = pt_data["distance"]
-            if x_min <= d <= x_max:
-                map_pt = self._interpolate_point_on_line(d)
-                if map_pt:
-                    visible_pts.append(map_pt)
-                else:
-                    # Si no podemos interpolar exactamente, usar coordenadas guardadas
-                    visible_pts.append(QgsPointXY(pt_data["x"], pt_data["y"]))
-
-        if len(visible_pts) < 2:
-            # Si hay muy pocos puntos, dibujar un segmento desde x_min a x_max
-            p1 = self._interpolate_point_on_line(x_min)
-            p2 = self._interpolate_point_on_line(x_max)
-            if p1 and p2:
-                visible_pts = [p1, p2]
-
-        if len(visible_pts) >= 2:
+        d_min, d_max = max(d_min, 0.0), min(d_max, self.total_m)
+        if d_max - d_min >= self.total_m * 0.999:
+            return  # se ve todo: no sombrear
+        pts = [self._point_at_distance(d_min)]
+        pts += [
+            QgsPointXY(p["x"], p["y"])
+            for p in self.points_data
+            if d_min < p["distance"] < d_max
+        ]
+        pts.append(self._point_at_distance(d_max))
+        pts = [p for p in pts if p is not None]
+        if len(pts) >= 2:
             try:
-                for p in visible_pts:
-                    self.view_extent_band.addPoint(p)
-                self.view_extent_band.setWidth(3)
+                for p in pts:
+                    self.view_extent_band.addPoint(QgsPointXY(p))
                 self.view_extent_band.show()
             except RuntimeError:
                 pass
 
+    def _dist_scale(self):
+        """Divisor para pasar metros a la unidad del eje X."""
+        return 1000.0 if self.unit_combo.currentIndex() == 1 else 1.0
+
     def _get_scale_factor(self):
-        """Retorna el factor de escala actual (1.0 para metros, 100.0 para cm)."""
-        return (
-            100.0
-            if hasattr(self, "unit_combo") and self.unit_combo.currentIndex() == 1
-            else 1.0
-        )
+        """Compatibilidad: factor unidad-eje por metro."""
+        return 1.0 / self._dist_scale()
 
     def _on_plot_mouse_move(self, event):
-        """
-        Evento de movimiento del mouse sobre el plot de Matplotlib.
-        Actualiza el marcador de posición en el mapa QGIS.
-        """
-        if not self.points_data or not event.inaxes:
+        if not self.points_data or self._ax is None:
             return
-
-        # Obtener distancia (eje X) en la posición del mouse
-        x_data = event.xdata
-        if x_data is None:
+        if event.inaxes not in (self._ax, self._ax_slope) or event.xdata is None:
             return
+        d_m = event.xdata * self._dist_scale()
+        self._update_position_marker(d_m)
+        self._update_cursor(d_m)
 
-        # Convertir a metros si está en cm
-        scale = self._get_scale_factor()
-        distance_m = x_data / scale if scale > 0 else x_data
-        self._update_position_marker(distance_m)
+    def _on_plot_leave(self, event):
+        for a in self._cursor_artists:
+            a.set_visible(False)
+        if self.position_marker:
+            try:
+                self.position_marker.hide()
+            except RuntimeError:
+                self.position_marker = None
+        self.canvas.draw_idle()
 
     def _on_plot_redraw(self, event):
-        """
-        Evento de redibujo del plot (zoom, pan, etc).
-        Actualiza el área visible en el mapa QGIS.
-        """
-        if not self.points_data:
+        if not self.points_data or self._ax is None:
             return
-
         try:
-            ax = self.figure.axes[0]
-            x_min, x_max = ax.get_xlim()
-            # Convertir a metros si está en cm
-            scale = self._get_scale_factor()
-            x_min_m = x_min / scale if scale > 0 else x_min
-            x_max_m = x_max / scale if scale > 0 else x_max
-            self._update_view_extent(x_min_m, x_max_m)
-        except (IndexError, Exception):
-            pass
-
-    def on_unit_changed(self, index):
-        """Cambia la unidad de visualización del eje de distancia."""
-        if self.points_data:
-            self.plot_profile()
-
-    def plot_profile(self):
-        """Dibuja el perfil y los estratos en el canvas de Matplotlib."""
-        self.figure.clear()
-
-        if not self.points_data:
-            self.canvas.draw()
-            return
-
-        ax = self.figure.add_subplot(111)
-
-        distances = [pt["distance"] for pt in self.points_data]
-        elevations = [pt["z"] for pt in self.points_data]
-
-        # Determinar unidad de visualización
-        use_cm = self.unit_combo.currentIndex() == 1
-        scale = 100.0 if use_cm else 1.0
-        unit_label = "cm" if use_cm else "m"
-
-        # Escalar distancias si está en cm
-        plot_distances = [d * scale for d in distances]
-
-        # Graficar terreno natural - color amarillo fuerte
-        ax.plot(
-            plot_distances,
-            elevations,
-            color="#FFD700",
-            label="Terreno (DEM)",
-            linewidth=2.5,
-        )
-
-        # Graficar estratos edafológicos segmentados
-        # Para cada segmento entre i e i+1, dibujamos las capas edafológicas
-        # correspondientes
-        for idx in range(len(self.points_data) - 1):
-            pt1 = self.points_data[idx]
-            pt2 = self.points_data[idx + 1]
-
-            # Escalar x_seg según la unidad
-            x_seg = [pt1["distance"] * scale, pt2["distance"] * scale]
-
-            horizons1 = pt1["horizons"] or []
-            horizons2 = pt2["horizons"] or []
-
-            # Encontrar el número máximo de horizontes
-            max_hor = max(len(horizons1), len(horizons2))
-
-            prev_bottom1 = 0.0
-            prev_bottom2 = 0.0
-
-            for h_idx in range(max_hor):
-                h1 = horizons1[h_idx] if h_idx < len(horizons1) else None
-                h2 = horizons2[h_idx] if h_idx < len(horizons2) else None
-
-                # Límites superiores en metros de profundidad (convertidos de cm)
-                top1 = h1.top / 100.0 if h1 else prev_bottom1
-                top2 = h2.top / 100.0 if h2 else prev_bottom2
-
-                # Límites inferiores
-                bottom1 = h1.bottom / 100.0 if h1 else top1
-                bottom2 = h2.bottom / 100.0 if h2 else top2
-
-                # Convertir a elevaciones absolutas
-                y1 = [pt1["z"] - top1, pt2["z"] - top2]
-                y2 = [pt1["z"] - bottom1, pt2["z"] - bottom2]
-
-                # Obtener color y nombre para la leyenda
-                color = "#d2b48c"
-                if h1:
-                    color = (
-                        h1.color.name() if hasattr(h1.color, "name") else str(h1.color)
-                    )
-                elif h2:
-                    color = (
-                        h2.color.name() if hasattr(h2.color, "name") else str(h2.color)
-                    )
-
-                # Relleno del estrato - borde con el color del estrato en lugar de negro
-                ax.fill_between(
-                    x_seg,
-                    y1,
-                    y2,
-                    color=color,
-                    alpha=0.8,
-                    edgecolor=color,
-                    linewidth=0.3,
-                )
-
-                prev_bottom1 = bottom1
-                prev_bottom2 = bottom2
-
-        # Detalles del gráfico
-        ax.set_title("Perfil Topográfico Dinámico y Estratigrafía Edafológica")
-        ax.set_xlabel(f"Distancia ({unit_label})")
-        ax.set_ylabel("Elevación (m s.n.m.)")
-        ax.grid(True, linestyle="--", alpha=0.6)
-
-        # Agregar parches manuales a la leyenda para los horizontes
-        # edafológicos dibujados
-        seen_horizons = {}
-        for pt in self.points_data:
-            for h in pt["horizons"] or []:
-                if h.name not in seen_horizons:
-                    color_val = (
-                        h.color.name() if hasattr(h.color, "name") else str(h.color)
-                    )
-                    seen_horizons[h.name] = color_val
-
-        legend_patches = [
-            mpatches.Patch(color=c, label=n) for n, c in seen_horizons.items()
-        ]
-
-        # Añadir la línea del terreno a la leyenda (color amarillo)
-        terrain_line = matplotlib.lines.Line2D(
-            [0], [0], color="#FFD700", linewidth=2.5, label="Terreno (DEM)"
-        )
-        ax.legend(handles=[terrain_line] + legend_patches, loc="upper right")
-
-        # Conectar eventos de navegación (zoom/pan) para actualizar el área visible
-        self.canvas.draw()
-
-        # Actualizar el área visible inicial
-        try:
-            x_min, x_max = ax.get_xlim()
-            self._update_view_extent(x_min, x_max)
+            x0, x1 = self._ax.get_xlim()
+            s = self._dist_scale()
+            self._update_view_extent(x0 * s, x1 * s)
         except Exception:
             pass
 
+    def on_unit_changed(self, index):
+        self.plot_profile()
+
+    # ------------------------------------------------------------------
+    # Dibujo
+    # ------------------------------------------------------------------
+    def _arrays(self):
+        d = np.array([p["distance"] for p in self.points_data], dtype=float)
+        z = np.array([p["z"] for p in self.points_data], dtype=float)
+        return d, z
+
+    def _runs(self):
+        """Tramos consecutivos dentro de la misma entidad de suelo con horizontes."""
+        runs, start = [], 0
+        pts = self.points_data
+        for i in range(1, len(pts) + 1):
+            if i == len(pts) or pts[i]["fid"] != pts[start]["fid"]:
+                if pts[start]["fid"] is not None:
+                    runs.append((start, i - 1))
+                start = i
+        return runs
+
+    def _soil_exaggeration(self, relief, max_depth_m):
+        val = self.soil_exag_combo.currentData()
+        if val:
+            return float(val)
+        if max_depth_m <= 0:
+            return 1.0
+        target = max(relief, 1.0) * 0.15
+        return float(_nice_factor(max(1.0, target / max_depth_m)))
+
+    def plot_profile(self, *args):
+        self.figure.clear()
+        self._cursor_artists = []
+        self._ax = self._ax_slope = None
+        self._update_buttons()
+        if not self.points_data:
+            self._draw_placeholder()
+            return
+
+        d, z = self._arrays()
+        valid = np.isfinite(z)
+        if not valid.any():
+            self._draw_placeholder()
+            self.status_label.setText("El DEM no tiene datos a lo largo de la línea.")
+            return
+
+        s = self._dist_scale()
+        unit = "km" if s > 1 else "m"
+        x = d / s
+        zmin, zmax = float(np.nanmin(z)), float(np.nanmax(z))
+        relief = zmax - zmin
+
+        runs = self._runs()
+        max_depth_m = 0.0
+        for a, b in runs:
+            hs = self.points_data[a]["horizons"]
+            if hs:
+                max_depth_m = max(max_depth_m, max(h.bottom for h in hs) / 100.0)
+        exag = self._soil_exaggeration(relief, max_depth_m)
+        self._soil_exag = exag
+
+        show_slope = self.slope_check.isChecked()
+        soil_runs = [r for r in runs if self.points_data[r[0]]["horizons"]]
+        show_cols = self.columns_check.isChecked() and bool(soil_runs)
+        # Altura de la franja de columnas: al menos ~125 px si el panel es bajo
+        fig_h_px = self.figure.get_size_inches()[1] * self.figure.dpi
+        usable = max(fig_h_px - 100.0, 150.0)
+        others = 4.0 + (1.0 if show_slope else 0.0)
+        strip = min(4.0, max(2.0, others * 125.0 / max(usable - 125.0, 1.0)))
+        ratios = ([strip] if show_cols else []) + [4] + ([1] if show_slope else [])
+        gs = self.figure.add_gridspec(len(ratios), 1, height_ratios=ratios, hspace=0.10)
+        row = 1 if show_cols else 0
+        ax = self.figure.add_subplot(gs[row])
+        ax_c = self.figure.add_subplot(gs[0], sharex=ax) if show_cols else None
+        ax_s = self.figure.add_subplot(gs[row + 1], sharex=ax) if show_slope else None
+        self._ax, self._ax_slope = ax, ax_s
+
+        # Entradas de leyenda aproximadas para reservar el margen derecho
+        leg_keys = {
+            (h.name, h.color.name(), h.texture)
+            for a, _ in soil_runs
+            for h in self.points_data[a]["horizons"]
+        }
+        leg_bounds = {
+            h.boundary_type
+            for a, _ in soil_runs
+            for h in self.points_data[a]["horizons"]
+        }
+        ncol = 2 if 2 + len(leg_keys) + len(leg_bounds) > 14 else 1
+        right = 0.80 if ncol == 1 else 0.68
+        # Márgenes en puntos tipográficos (independientes de la altura del dock)
+        fig_h_pt = max(self.figure.get_size_inches()[1] * 72.0, 120.0)
+        self.figure.subplots_adjust(
+            left=0.06,
+            right=right,
+            top=1.0 - 46.0 / fig_h_pt,
+            bottom=30.0 / fig_h_pt,
+        )
+
+        base_y = zmin - max(relief * 0.12, max_depth_m * exag * 1.3, 1.0)
+        top_y = zmax + max(relief * (0.22 if self.units_check.isChecked() else 0.08), 1)
+
+        # Sustrato (bajo el terreno)
+        ax.fill_between(
+            x,
+            np.where(valid, z, np.nan),
+            base_y,
+            color=C_SUBSTRATE,
+            hatch="////" if self.patterns_check.isChecked() else None,
+            edgecolor="#cfd8dc",
+            linewidth=0,
+            zorder=1,
+        )
+
+        legend_h = {}
+        bound_used = set()
+        for a, b in runs:
+            hs = self.points_data[a]["horizons"]
+            if not hs:
+                continue
+            end = b + 1
+            xs = x[a:end]
+            zs = z[a:end]
+            depths = _draped_depths(hs, len(xs))
+            for k, h in enumerate(hs):
+                top = zs - depths[k] / 100.0 * exag
+                bot = zs - depths[k + 1] / 100.0 * exag
+                key, _ = pattern_key(h.texture)
+                hatch = (
+                    HATCHES.get(key, "") if self.patterns_check.isChecked() else None
+                )
+                ax.fill_between(
+                    xs,
+                    top,
+                    bot,
+                    facecolor=h.color.name(),
+                    edgecolor=(0, 0, 0, 0.35),
+                    hatch=hatch or None,
+                    linewidth=0,
+                    zorder=2,
+                )
+                style = BOUNDARY_STYLE.get(h.boundary_type, BOUNDARY_STYLE["clear"])
+                ax.plot(xs, bot, color="#212121", alpha=0.75, zorder=3, **style)
+                bound_used.add(h.boundary_type)
+                lk = (h.name, h.color.name(), h.texture)
+                if lk not in legend_h:
+                    legend_h[lk] = mpatches.Patch(
+                        facecolor=h.color.name(),
+                        edgecolor=(0, 0, 0, 0.45),
+                        hatch=hatch or None,
+                        label=f"{h.name} – {h.texture}",
+                    )
+
+        # Terreno
+        ax.plot(x, z, color=C_TERRAIN, linewidth=1.6, zorder=4, label="Terreno (DEM)")
+
+        # Unidades de suelo: separadores y rótulos
+        if self.units_check.isChecked():
+            trans = blended_transform_factory(ax.transData, ax.transAxes)
+            for a, b in runs:
+                label = self.points_data[a]["unit"] or "s/ perfil"
+                x0, x1 = x[a], x[b]
+                for xv in (x0, x1):
+                    ax.axvline(
+                        xv, color="#8d6e63", linewidth=0.6, linestyle=":", zorder=1.5
+                    )
+                ax.plot(
+                    [x0, x1],
+                    [0.955, 0.955],
+                    color="#8d6e63",
+                    linewidth=1.0,
+                    transform=trans,
+                    zorder=5,
+                    clip_on=False,
+                )
+                if not show_cols and (x1 - x0) > (x[-1] - x[0]) * 0.04:
+                    ax.text(
+                        (x0 + x1) / 2,
+                        0.97,
+                        label,
+                        transform=trans,
+                        ha="center",
+                        va="bottom",
+                        fontsize=7.5,
+                        fontweight="bold",
+                        color="#4e342e",
+                        zorder=6,
+                    )
+
+        # Extremos A – A'
+        for xv, txt, ha in ((x[0], "A", "left"), (x[-1], "A'", "right")):
+            ax.annotate(
+                txt,
+                xy=(xv, 1.0),
+                xycoords=("data", "axes fraction"),
+                xytext=(3 if ha == "left" else -3, 3),
+                textcoords="offset points",
+                ha=ha,
+                va="bottom",
+                fontsize=10,
+                fontweight="bold",
+                color="#4e342e",
+                annotation_clip=False,
+            )
+
+        ax.set_xlim(x[0], x[-1])
+        ax.set_ylim(base_y, top_y)
+        ax.set_ylabel("Cota (m s.n.m.)", fontsize=8)
+        ax.tick_params(labelsize=7.5)
+        ax.grid(True, color="#e0e0e0", linewidth=0.6, zorder=0)
+        for sp in ("top", "right"):
+            ax.spines[sp].set_visible(False)
+
+        # Exageración vertical
+        ve_fixed = self.ve_combo.currentData()
+        if ve_fixed:
+            ax.set_aspect(ve_fixed / s, adjustable="datalim")
+
+        # Estadísticas
+        stats = self._stats(d, z)
+        info = (
+            f"Longitud {self._fmt_len(self.total_m)}   ·   Cota {zmin:,.1f} – "
+            f"{zmax:,.1f} m   ·   Desnivel {relief:,.1f} m\n"
+            f"Pendiente media {stats['mean']:.1f} %   ·   máx. {stats['max']:.1f} %"
+            f"   ·   Ascenso {stats['up']:,.0f} m / Descenso {stats['down']:,.0f} m"
+        ).replace(",", " ")
+        exag_txt = f"Profundidad del suelo exagerada ×{exag:g}"
+        # Encabezado fijo arriba de la figura (título + estadísticas)
+        fig = self.figure
+        head = offset_copy(fig.transFigure, fig=fig, y=-5, units="points")
+        fig.text(
+            0.06,
+            1.0,
+            "Perfil topográfico y estratigrafía edafológica",
+            transform=head,
+            fontsize=10,
+            fontweight="bold",
+            color="#3e2723",
+            va="top",
+        )
+        sub = offset_copy(fig.transFigure, fig=fig, y=-19, units="points")
+        fig.text(0.06, 1.0, info, transform=sub, fontsize=7, color="#5d4037", va="top")
+        if show_cols:
+            fig.text(
+                right,
+                1.0,
+                "Perfiles edafológicos intersectados\nprofundidad real (cm)",
+                transform=sub,
+                fontsize=7,
+                style="italic",
+                color="#6d4c41",
+                ha="right",
+                va="top",
+            )
+        if show_cols:
+            self._draw_columns(ax_c, ax, x, z, soil_runs)
+        ax.text(
+            0.995,
+            0.02,
+            exag_txt,
+            transform=ax.transAxes,
+            fontsize=7,
+            color="#6d4c41",
+            ha="right",
+            va="bottom",
+            style="italic",
+            bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="#d7ccc8", alpha=0.9),
+            zorder=7,
+        )
+
+        # Pendiente
+        if ax_s is not None:
+            self._plot_slope(ax_s, x, stats["slope"])
+            ax_s.set_xlabel(f"Distancia ({unit})", fontsize=8)
+            ax.tick_params(labelbottom=False)
+        else:
+            ax.set_xlabel(f"Distancia ({unit})", fontsize=8)
+
+        # Leyenda (fuera del gráfico, a la derecha)
+        handles = [Line2D([0], [0], color=C_TERRAIN, lw=1.6, label="Terreno (DEM)")]
+        handles += list(legend_h.values())
+        for bt in ("abrupt", "clear", "gradual", "diffuse"):
+            if bt in bound_used:
+                handles.append(
+                    Line2D(
+                        [0],
+                        [0],
+                        color="#212121",
+                        label=BOUNDARY_NAMES[bt],
+                        **BOUNDARY_STYLE[bt],
+                    )
+                )
+        handles.append(
+            mpatches.Patch(
+                facecolor=C_SUBSTRATE,
+                edgecolor="#cfd8dc",
+                hatch="////" if self.patterns_check.isChecked() else None,
+                label="Sustrato no descrito",
+            )
+        )
+        ax.legend(
+            handles=handles,
+            loc="upper left",
+            bbox_to_anchor=(1.01, 1.0),
+            fontsize=7,
+            frameon=False,
+            ncol=ncol,
+            handlelength=2.2,
+            borderaxespad=0,
+        )
+
+        # Artistas del cursor
+        vl = ax.axvline(x[0], color="#e65100", linewidth=0.9, zorder=8, visible=False)
+        (dot,) = ax.plot(
+            [x[0]],
+            [z[0]],
+            "o",
+            ms=5,
+            mfc="white",
+            mec="#e65100",
+            mew=1.5,
+            zorder=9,
+            visible=False,
+        )
+        box = ax.annotate(
+            "",
+            xy=(x[0], z[0]),
+            xytext=(10, -10),
+            textcoords="offset points",
+            fontsize=7.2,
+            va="top",
+            bbox=dict(boxstyle="round,pad=0.4", fc="white", ec="#8d6e63", alpha=0.95),
+            zorder=10,
+            visible=False,
+        )
+        box.set_clip_on(False)
+        ax.set_zorder(3)  # el cuadro de lectura queda sobre el gráfico de pendiente
+        self._cursor_artists = [vl, dot, box]
+        if ax_s is not None:
+            vl2 = ax_s.axvline(x[0], color="#e65100", linewidth=0.9, visible=False)
+            self._cursor_artists.append(vl2)
+
+        n_units = len(runs)
+        self.status_label.setText(
+            f"{len(self.points_data)} muestras · {n_units} tramo(s) con suelo"
+        )
+        self.figure.align_ylabels([a for a in (ax, ax_s) if a is not None])
+        self.canvas.draw()
+
+    def _draw_columns(self, ax_c, ax, x, z, soil_runs):
+        """Columna del perfil a escala real sobre cada cruce con una unidad."""
+        ax_c.set_ylim(0, 1)
+        ax_c.axis("off")
+        fig_w, fig_h = self.figure.get_size_inches() * self.figure.dpi
+        pos = ax_c.get_position()
+        strip_w_px = max(pos.width * fig_w, 1.0)
+        strip_h_px = max(pos.height * fig_h, 1.0)
+        col_h_frac = 0.80
+        col_h_px = strip_h_px * col_h_frac
+        col_w_px = max(64.0, min(col_h_px * 0.62, 140.0))
+        x_range = (x[-1] - x[0]) or 1.0
+        w_data = col_w_px / strip_w_px * x_range
+        oversample = 2.0
+        z_fill = np.where(np.isfinite(z), z, np.nanmin(z))
+        last_right = -np.inf
+        for a, b in soil_runs:
+            hs = self.points_data[a]["horizons"]
+            xc = (x[a] + x[b]) / 2.0
+            if xc - w_data / 2 < last_right + w_data * 0.12:
+                continue  # no cabe sin solaparse con la anterior
+            last_right = xc + w_data / 2
+            zc = float(np.interp(xc, x, z_fill))
+            img = render_column_image(
+                hs,
+                col_w_px * oversample,
+                col_h_px * oversample,
+                unit=oversample * 0.9,
+                shaped=True,
+                labels=True,
+                ruler=True,
+                ruler_width=oversample * 23,
+                font_px=oversample * 7.5,
+            )
+            ax_c.imshow(
+                _qimage_to_rgba(img),
+                extent=(xc - w_data / 2, xc + w_data / 2, 0.0, col_h_frac),
+                aspect="auto",
+                interpolation="antialiased",
+                zorder=3,
+            )
+            depth = max(h.bottom for h in hs)
+            unit = self.points_data[a]["unit"] or f"FID {self.points_data[a]['fid']}"
+            ax_c.text(
+                xc,
+                col_h_frac + 0.03,
+                f"{unit}  ·  {depth:g} cm",
+                ha="center",
+                va="bottom",
+                fontsize=7.5,
+                fontweight="bold",
+                color="#4e342e",
+                zorder=4,
+            )
+            con = ConnectionPatch(
+                xyA=(xc, 0.0),
+                coordsA=ax_c.transData,
+                xyB=(xc, zc),
+                coordsB=ax.transData,
+                color="#8d6e63",
+                linewidth=0.9,
+                linestyle=(0, (3, 2)),
+                zorder=6,
+            )
+            if hasattr(self.figure, "add_artist"):
+                self.figure.add_artist(con)
+            else:
+                ax_c.add_artist(con)
+            ax.plot(
+                [xc],
+                [zc],
+                marker="v",
+                ms=6,
+                color="#8d6e63",
+                mec="white",
+                mew=0.8,
+                zorder=7,
+            )
+
+    def _plot_slope(self, ax_s, x, slope):
+        ax_s.fill_between(x, 0, slope, color="#bdbdbd", linewidth=0, step="mid")
+        lo = 0
+        for hi, color, label in SLOPE_CLASSES:
+            mask = (np.abs(slope) >= lo) & (np.abs(slope) < hi)
+            ax_s.fill_between(
+                x,
+                0,
+                slope,
+                where=mask,
+                color=color,
+                linewidth=0,
+                step="mid",
+                label=label,
+            )
+            lo = hi
+        ax_s.axhline(0, color="#616161", linewidth=0.6)
+        ax_s.set_ylabel("Pend. (%)", fontsize=8)
+        ax_s.tick_params(labelsize=7)
+        ax_s.grid(True, color="#eeeeee", linewidth=0.5)
+        for sp in ("top", "right"):
+            ax_s.spines[sp].set_visible(False)
+        lim = max(5.0, float(np.nanmax(np.abs(slope))) * 1.15) if slope.size else 5
+        ax_s.set_ylim(-lim, lim)
+        # Leyenda de clases dentro del propio gráfico (no compite con la principal)
+        ax_s.legend(
+            loc="upper right",
+            ncol=len(SLOPE_CLASSES),
+            fontsize=6,
+            frameon=True,
+            framealpha=0.85,
+            edgecolor="#e0e0e0",
+            handlelength=1.2,
+            columnspacing=0.8,
+            borderpad=0.3,
+        )
+
+    @staticmethod
+    def _stats(d, z):
+        valid = np.isfinite(z)
+        slope = np.full_like(z, np.nan)
+        if valid.sum() >= 3:
+            dv, zv = d[valid], z[valid]
+            # Suavizado leve (ventana ~3 muestras) para no amplificar ruido del DEM
+            k = 3
+            zs = np.convolve(zv, np.ones(k) / k, mode="same")
+            zs[0], zs[-1] = zv[0], zv[-1]
+            g = np.gradient(zs, dv) * 100.0
+            slope[valid] = g
+        dz = np.diff(z[valid]) if valid.sum() > 1 else np.array([0.0])
+        abs_s = np.abs(slope[np.isfinite(slope)])
+        return {
+            "slope": np.nan_to_num(slope),
+            "mean": float(abs_s.mean()) if abs_s.size else 0.0,
+            "max": float(abs_s.max()) if abs_s.size else 0.0,
+            "up": float(dz[dz > 0].sum()),
+            "down": float(-dz[dz < 0].sum()),
+        }
+
+    @staticmethod
+    def _fmt_len(m):
+        return f"{m / 1000:.2f} km" if m >= 1000 else f"{m:.0f} m"
+
+    def _update_cursor(self, d_m):
+        if not self._cursor_artists:
+            return
+        d, z = self._arrays()
+        i = int(np.clip(np.searchsorted(d, d_m), 0, len(d) - 1))
+        if i > 0 and abs(d[i - 1] - d_m) < abs(d[i] - d_m):
+            i -= 1
+        p = self.points_data[i]
+        xv = d[i] / self._dist_scale()
+        zv = z[i]
+        vl, dot, box = self._cursor_artists[:3]
+        vl.set_xdata([xv, xv])
+        if math.isfinite(zv):
+            dot.set_data([xv], [zv])
+            dot.set_visible(True)
+        else:
+            dot.set_visible(False)
+        lines = [
+            f"Distancia: {self._fmt_len(d[i])}",
+            f"Cota: {zv:.1f} m" if math.isfinite(zv) else "Cota: sin dato",
+        ]
+        if p["fid"] is not None:
+            lines.append(f"Unidad: {p['unit'] or 'FID ' + str(p['fid'])}")
+            for h in p["horizons"]:
+                lines.append(f"  {h.name}: {h.top:g}–{h.bottom:g} cm · {h.texture}")
+        else:
+            lines.append("Sin unidad de suelo")
+        box.set_text("\n".join(lines[:12]))
+        y_anchor = zv if math.isfinite(zv) else sum(self._ax.get_ylim()) / 2
+        box.xy = (xv, y_anchor)
+        # Abrir el cuadro hacia el lado con más espacio
+        x0, x1 = self._ax.get_xlim()
+        right_side = (xv - x0) < (x1 - x0) * 0.6
+        y0, y1 = self._ax.get_ylim()
+        upper = (y_anchor - y0) > (y1 - y0) * 0.5
+        box.set_position((10 if right_side else -10, -10 if upper else 10))
+        box.set_ha("left" if right_side else "right")
+        box.set_va("top" if upper else "bottom")
+        for a in self._cursor_artists:
+            if a is not dot:
+                a.set_visible(True)
+        if len(self._cursor_artists) > 3:
+            self._cursor_artists[3].set_xdata([xv, xv])
+        self.canvas.draw_idle()
+
+    # ------------------------------------------------------------------
+    # Exportación
+    # ------------------------------------------------------------------
+    def export_dialog(self):
+        if not self.points_data:
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Exportar perfil topográfico",
+            "perfil_topografico.png",
+            "Imagen PNG (*.png);;Documento PDF (*.pdf);;Vectorial SVG (*.svg)",
+        )
+        if not path:
+            return
+        ok, msg = self.export_figure(path)
+        if ok:
+            QMessageBox.information(self, "Perfil exportado", msg)
+        else:
+            QMessageBox.critical(self, "Error al exportar", msg)
+
+    def export_figure(self, path, dpi=300):
+        """Guarda el gráfico (sin el cursor) en alta resolución."""
+        hidden = [a for a in self._cursor_artists if a.get_visible()]
+        for a in hidden:
+            a.set_visible(False)
+        try:
+            self.figure.savefig(path, dpi=dpi, bbox_inches="tight", facecolor="white")
+            return True, f"Perfil guardado en:\n{path}"
+        except Exception as e:
+            return False, str(e)
+        finally:
+            for a in hidden:
+                a.set_visible(True)
+            self.canvas.draw_idle()
+
     def closeEvent(self, event):
-        """Al cerrar el dock, limpiar los marcadores espaciales."""
-        self.clear_spatial_markers()
+        """Al cerrar el dock, limpiar los marcadores del mapa."""
+        self._clear_all_map_items()
         super().closeEvent(event)

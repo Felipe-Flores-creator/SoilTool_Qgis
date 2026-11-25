@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
-from qgis.PyQt.QtWidgets import QAction, QDockWidget, QWidget, QVBoxLayout, QSizePolicy
-from qgis.PyQt.QtCore import Qt, pyqtSignal, QTimer
+from qgis.PyQt.QtWidgets import QAction, QDockWidget
+from qgis.PyQt.QtCore import Qt, QTimer
 from qgis.PyQt.QtGui import QIcon
 
 
@@ -83,7 +83,8 @@ class SoilTool:
 
         if not self.docks:
             self.panel = ProfilePanel()
-            # Establecer referencia al plugin para que el botón pueda activar la herramienta
+            # Establecer referencia al plugin para que el botón pueda
+            # activar la herramienta
             self.panel.plugin_instance = self
             self.panel.horizonsChanged.connect(self.on_horizons_changed)
             self.panel.layer_combo.layerChanged.connect(self.on_layer_changed)
@@ -93,7 +94,10 @@ class SoilTool:
                 "SoilTool - Editor de Perfil", self.iface.mainWindow()
             )
             dock_editor.setWidget(self.panel)
-            dock_editor.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+            dock_editor.setAllowedAreas(
+                Qt.DockWidgetArea.LeftDockWidgetArea
+                | Qt.DockWidgetArea.RightDockWidgetArea
+            )
             self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock_editor)
             self.docks.append(dock_editor)
             self.panel.dock_editor = dock_editor
@@ -102,7 +106,10 @@ class SoilTool:
             # 2. Dock del Lienzo 2D
             dock_canvas = QDockWidget("SoilTool - Lienzo 2D", self.iface.mainWindow())
             dock_canvas.setWidget(self.panel.canvas_widget)
-            dock_canvas.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+            dock_canvas.setAllowedAreas(
+                Qt.DockWidgetArea.LeftDockWidgetArea
+                | Qt.DockWidgetArea.RightDockWidgetArea
+            )
             self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock_canvas)
             self.docks.append(dock_canvas)
             self.panel.dock_canvas = dock_canvas
@@ -116,9 +123,12 @@ class SoilTool:
             )
             dock_explorer.setWidget(self.panel.explorer_widget)
             dock_explorer.setAllowedAreas(
-                Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea
+                Qt.DockWidgetArea.LeftDockWidgetArea
+                | Qt.DockWidgetArea.RightDockWidgetArea
             )
-            self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock_explorer)
+            self.iface.addDockWidget(
+                Qt.DockWidgetArea.RightDockWidgetArea, dock_explorer
+            )
             self.docks.append(dock_explorer)
             self.panel.dock_explorer = dock_explorer
 
@@ -132,7 +142,8 @@ class SoilTool:
                 self.panel.on_explorer_visibility_changed
             )
 
-            # Apilar los docks en forma de pestañas por defecto para no saturar la pantalla
+            # Apilar los docks en forma de pestañas por defecto para no
+            # saturar la pantalla
             self._schedule_profile_dock_tabify(dock_editor, dock_canvas, dock_explorer)
             dock_editor.raise_()  # Asegurar que el editor esté al frente inicialmente
 
@@ -198,7 +209,9 @@ class SoilTool:
         self.dynamic_profile_dock = DynamicProfileDock(
             self.iface.mainWindow(), self.iface
         )
-        self.iface.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.dynamic_profile_dock)
+        self.iface.addDockWidget(
+            Qt.DockWidgetArea.BottomDockWidgetArea, self.dynamic_profile_dock
+        )
         self.docks.append(self.dynamic_profile_dock)
 
     def on_editor_visibility_changed(self, visible):
@@ -232,7 +245,6 @@ class SoilTool:
         """
         # Aquí se pueden agregar acciones adicionales cuando cambian los horizontes
         # Por ejemplo, actualizar otras vistas o realizar cálculos
-        pass
 
     def _schedule_profile_dock_tabify(self, dock_editor, dock_canvas, dock_explorer):
         """

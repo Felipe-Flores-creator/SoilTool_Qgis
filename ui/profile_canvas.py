@@ -221,7 +221,11 @@ class EdafoCanvas(QWidget):
             font = painter.font()
             font.setBold(True)
             painter.setFont(font)
-            painter.drawText(text_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, hor.name)
+            painter.drawText(
+                text_rect,
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                hor.name,
+            )
             painter.restore()
 
             painter.setPen(QPen(hor.color.darker(150), 1, Qt.PenStyle.SolidLine))

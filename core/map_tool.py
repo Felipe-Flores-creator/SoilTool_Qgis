@@ -1,5 +1,4 @@
 from qgis.gui import QgsMapToolIdentify
-from qgis.core import QgsProject
 from qgis.PyQt.QtCore import pyqtSignal, Qt
 from qgis.PyQt.QtWidgets import QLabel
 from qgis.PyQt.QtGui import QPixmap, QPainter, QPainterPath, QColor
@@ -41,12 +40,12 @@ class SoilMapTool(QgsMapToolIdentify):
         if self.target_layer:
             # Si hay capa objetivo, identificar solo en ella para mayor precisión
             found_features = self.identify(
-                event.x(), event.y(), [self.target_layer], self.TopDownAll
+                event.pos().x(), event.pos().y(), [self.target_layer], self.TopDownAll
             )
         else:
             # Identificar en todas las capas vectoriales visibles
             found_features = self.identify(
-                event.x(), event.y(), self.TopDownAll, self.VectorLayer
+                event.pos().x(), event.pos().y(), self.TopDownAll, self.VectorLayer
             )
 
         if not found_features:
@@ -73,11 +72,11 @@ class SoilMapTool(QgsMapToolIdentify):
         # Identificar entidades al mover el mouse (hover)
         if self.target_layer:
             found_features = self.identify(
-                event.x(), event.y(), [self.target_layer], self.TopDownAll
+                event.pos().x(), event.pos().y(), [self.target_layer], self.TopDownAll
             )
         else:
             found_features = self.identify(
-                event.x(), event.y(), self.TopDownAll, self.VectorLayer
+                event.pos().x(), event.pos().y(), self.TopDownAll, self.VectorLayer
             )
 
         if not found_features:
@@ -97,8 +96,9 @@ class SoilMapTool(QgsMapToolIdentify):
         feature = layer.getFeature(res.mFeature.id())
 
         if self.last_hovered_fid == feature.id() and self.preview_label.isVisible():
-            # Solo mover la etiqueta si es la misma entidad y ya estamos mostrando el perfil
-            self.preview_label.move(event.x() + 15, event.y() + 15)
+            # Solo mover la etiqueta si es la misma entidad y ya estamos
+            # mostrando el perfil
+            self.preview_label.move(event.pos().x() + 15, event.pos().y() + 15)
             return
 
         self.last_hovered_fid = feature.id()
@@ -107,7 +107,7 @@ class SoilMapTool(QgsMapToolIdentify):
         _, _, horizons = HorizonManager.get_profile_data(feature, layer)
         if horizons:
             self._draw_profile_preview(horizons)
-            self.preview_label.move(event.x() + 15, event.y() + 15)
+            self.preview_label.move(event.pos().x() + 15, event.pos().y() + 15)
             self.preview_label.show()
         else:
             self.preview_label.hide()

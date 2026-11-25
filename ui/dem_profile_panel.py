@@ -5,8 +5,6 @@ Muestra el perfil de elevación con los horizontes de suelo posicionados
 bajo la superficie del terreno, con visualización profesional integrada.
 """
 
-import math
-
 from qgis.PyQt.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -14,7 +12,6 @@ from qgis.PyQt.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
-    QFrame,
     QSizePolicy,
     QMessageBox,
     QFileDialog,
@@ -27,11 +24,9 @@ from qgis.PyQt.QtGui import (
     QColor,
     QPainterPath,
     QLinearGradient,
-    QFont,
     QPixmap,
-    QFontMetrics,
 )
-from qgis.PyQt.QtCore import Qt, QRectF, pyqtSignal, QSize, QPointF
+from qgis.PyQt.QtCore import Qt, QRectF, pyqtSignal
 
 from ..core.materials import get_material_names
 from ..core.horizon_manager import HorizonManager
@@ -53,10 +48,13 @@ class DEMProfileCanvas(QWidget):
     # --- Soporte: horizontes/celdas manuales por tramo (start_d/end_d) ---
     # Implementación:
     # - manual_segments: lista de segmentos manuales sobre el perfil.
-    # - Cada segmento tiene su propio HorizonData (top/bottom en cm) + extensión (start_d/end_d).
+    # - Cada segmento tiene su propio HorizonData (top/bottom en cm) + extensión
+    # (start_d/end_d).
     # - Render: se dibujan como un horizonte adicional dentro del tramo.
-    # - Edición: si edit_enabled=True, los top/bottom de manuales también son arrastrables.
-    # - Persistencia: la conversión a HorizonData global (perfil edafológico) se hace desde DEMProfilePanel.
+    # - Edición: si edit_enabled=True, los top/bottom de manuales también son
+    # arrastrables.
+    # - Persistencia: la conversión a HorizonData global (perfil edafológico) se
+    # hace desde DEMProfilePanel.
 
     # Estr. segmento (internal):
     # {
@@ -117,7 +115,8 @@ class DEMProfileCanvas(QWidget):
         self.cells = []
 
         # tracks: lista de dicts:
-        # { 'source' in ('detected','manual'), 'ifeat_idx' or 'mseg_idx', 'h_idx', 'kind' ('top','bottom'), 'points': [ {'d','e'}, ... ] }
+        # { 'source' in ('detected','manual'), 'ifeat_idx' or 'mseg_idx',
+        # 'h_idx', 'kind' ('top','bottom'), 'points': [ {'d','e'}, ... ] }
         self._edit_tracks = []
         self._edit_tracks_ready = False
 
@@ -163,7 +162,8 @@ class DEMProfileCanvas(QWidget):
     def start_manual_cell_add(self, horizon_data):
         """
         Entra en modo: siguiente clic define start_d, siguiente clic define end_d.
-        horizon_data: HorizonData con top/bottom cm + simbología (color/texture/name/etc)
+        horizon_data: HorizonData con top/bottom cm + simbología
+        (color/texture/name/etc)
         """
         if not self.profile_data or not getattr(self.profile_data, "points", None):
             return False
@@ -374,7 +374,9 @@ class DEMProfileCanvas(QWidget):
                 continue
 
             top_track = {
-                "ifeat_idx": mseg_idx,  # para compat con _get_edit_points_by_key actual (siempre usa ifeat_idx)
+                # para compat con _get_edit_points_by_key actual
+                # (siempre usa ifeat_idx)
+                "ifeat_idx": mseg_idx,
                 "h_idx": mseg_idx,  # clave (mseg_idx, mseg_idx, kind)
                 "kind": "top",
                 "points": [{"d": d, "e": top_e} for (d, top_e, _) in segment_points],
@@ -432,7 +434,10 @@ class DEMProfileCanvas(QWidget):
         return pixmap.save(file_path)
 
     def paintEvent(self, event):
-        """Evento de pintado principal. Protegido contra recursión y cambios de estado."""
+        """Evento de pintado principal.
+
+        Protegido contra recursión y cambios de estado.
+        """
         if self._in_paint_event:
             return
 
@@ -495,7 +500,6 @@ class DEMProfileCanvas(QWidget):
         if not self._last_draw_params:
             return None
         draw_bottom = self._last_draw_params["draw_bottom"]
-        draw_top = self._last_draw_params["draw_top"]
         draw_height = self._last_draw_params["draw_height"]
         y_min_display = self._last_draw_params["y_min_display"]
         y_display_range = self._last_draw_params["y_display_range"]
@@ -512,7 +516,8 @@ class DEMProfileCanvas(QWidget):
     def _find_nearest_vertex(self, mouse_x: float, mouse_y: float):
         """
         Encuentra el (track_idx, point_idx) más cercano.
-        Criterio: distancia en pixeles al punto (x_proyectado, y_proyectado de elevación).
+        Criterio: distancia en pixeles al punto (x_proyectado, y_proyectado de
+        elevación).
         """
         if (
             not self._edit_tracks_ready
@@ -528,10 +533,10 @@ class DEMProfileCanvas(QWidget):
         draw_width = self._last_draw_params["draw_width"]
         total_distance = self._last_draw_params["total_distance"]
 
-        # Convert screen x to distance is unnecessary: distancia por x se obtiene al proyectar d.
+        # Convert screen x to distance is unnecessary: distancia por x se
+        # obtiene al proyectar d.
         # Proyectamos cada punto a pantalla: x(d), y(e)
         for ti, t in enumerate(self._edit_tracks):
-            kind = t.get("kind")
             pts = t.get("points") or []
             for pi, p in enumerate(pts):
                 d = p.get("d", 0.0)
@@ -540,7 +545,6 @@ class DEMProfileCanvas(QWidget):
                 x = draw_left + (d / total_distance) * draw_width
                 # y usando elevación y_min_display/rango
                 draw_bottom = self._last_draw_params["draw_bottom"]
-                draw_top = self._last_draw_params["draw_top"]
                 draw_height = self._last_draw_params["draw_height"]
                 y_min_display = self._last_draw_params["y_min_display"]
                 y_display_range = self._last_draw_params["y_display_range"]
@@ -573,7 +577,8 @@ class DEMProfileCanvas(QWidget):
             ):
                 return
 
-            # Convertir click a elevación con y, pero para d necesitamos la proyección en X
+            # Convertir click a elevación con y, pero para d necesitamos
+            # la proyección en X
             x = float(event.pos().x())
             draw_left = self._last_draw_params["draw_left"]
             draw_width = self._last_draw_params["draw_width"]
@@ -613,7 +618,8 @@ class DEMProfileCanvas(QWidget):
                     }
                 )
 
-                # Salir modo add y reconstruir tracks para permitir edición inmediata si edit_enabled=True
+                # Salir modo add y reconstruir tracks para permitir
+                # edición inmediata si edit_enabled=True
                 self._manual_add_mode = False
                 self._manual_add_first_click_d = None
                 self._manual_pending_horizon_data = None
@@ -687,7 +693,10 @@ class DEMProfileCanvas(QWidget):
         self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def _draw_profile(self, painter, width, height, data):
-        """Dibuja el perfil completo: línea de superficie + horizontes con profundidad."""
+        """Dibuja el perfil completo.
+
+        Línea de superficie + horizontes con profundidad.
+        """
         if data is None:
             return
 
@@ -737,7 +746,8 @@ class DEMProfileCanvas(QWidget):
         # para que sean visibles. Si son gruesos, amplificación moderada.
         if min_horizon_thickness < float("inf") and min_horizon_thickness > 0:
             min_thick_m = min_horizon_thickness / 100.0
-            # Escala: si el horizonte más delgado es 0.1m -> amplificar 6x; si es 1m -> 2x
+            # Escala: si el horizonte más delgado es 0.1m -> amplificar
+            # 6x; si es 1m -> 2x
             depth_amplify = max(2.0, min(8.0, 0.6 / min_thick_m))
         else:
             depth_amplify = 2.0
@@ -923,7 +933,8 @@ class DEMProfileCanvas(QWidget):
                     continue
 
                 for h_idx, h in enumerate(horizons):
-                    # NOTA: h.top y h.bottom están en PROFUNDIDAD (cm) desde la superficie,
+                    # NOTA: h.top y h.bottom están en PROFUNDIDAD
+                    # (cm) desde la superficie,
                     # NO son elevaciones en metros. Para convertirlos a elevación:
                     #   top_elev = surface_elev_at_point - h.bottom / 100.0
                     #   bottom_elev = surface_elev_at_point - h.top / 100.0
@@ -953,12 +964,19 @@ class DEMProfileCanvas(QWidget):
                             segment_points = []
                     if not segment_points:
                         # Asegurar los puntos exactos de inicio con elevación real
-                        # Convertir profundidad cm a elevación usando superficie interpolada
+                        # Convertir profundidad cm a elevación
+                        # usando superficie interpolada
                         def _horizon_elev_at(d, is_top=True):
                             """Convierte profundidad (cm) a elevación (m).
-                            h.top = profundidad techo (menor), h.bottom = profundidad muro (mayor)
-                            is_top=True = techo del horizonte (más somero) = surface - h.bottom/100
-                            is_top=False = muro del horizonte (más profundo) = surface - h.top/100
+                            h.top = profundidad techo
+                            (menor), h.bottom = profundidad
+                            muro (mayor)
+                            is_top=True = techo del
+                            horizonte (más somero) = surface
+                            - h.bottom/100
+                            is_top=False = muro del
+                            horizonte (más profundo) =
+                            surface - h.top/100
                             """
                             surf = _interp_surface_elev_at(d)
                             if surf is None:
@@ -1069,7 +1087,9 @@ class DEMProfileCanvas(QWidget):
                             QColor(255, 255, 255, 210),
                         )
                         painter.setPen(QColor(20, 20, 20, 200))
-                        painter.drawText(name_rect, Qt.AlignmentFlag.AlignCenter, h.name)
+                        painter.drawText(
+                            name_rect, Qt.AlignmentFlag.AlignCenter, h.name
+                        )
 
                         font_label.setBold(False)
                         font_label.setPointSize(6)
@@ -1082,14 +1102,17 @@ class DEMProfileCanvas(QWidget):
                         )
                         painter.setPen(QColor(60, 60, 60, 200))
                         painter.drawText(
-                            thickness_rect, Qt.AlignmentFlag.AlignCenter, f"{thickness_m:.2f} m"
+                            thickness_rect,
+                            Qt.AlignmentFlag.AlignCenter,
+                            f"{thickness_m:.2f} m",
                         )
 
                     painter.restore()
 
                     painter.save()
                     painter.setClipRect(draw_left, draw_top, draw_width, draw_height)
-                    # Usar el color original del horizonte (sin oscurecer) para mejor visibilidad
+                    # Usar el color original del horizonte (sin
+                    # oscurecer) para mejor visibilidad
                     painter.setPen(QPen(color, 1.0))
                     painter.setBrush(Qt.BrushStyle.NoBrush)
                     painter.drawPath(horizon_path)
@@ -1127,7 +1150,8 @@ class DEMProfileCanvas(QWidget):
                             )
                         )
 
-                # Si edit_enabled y hay tracks manuales, sobreescribir con edit_points_by_key
+                # Si edit_enabled y hay tracks manuales, sobreescribir
+                # con edit_points_by_key
                 if (
                     self.edit_enabled
                     and edit_points_by_key is not None
@@ -1135,13 +1159,17 @@ class DEMProfileCanvas(QWidget):
                     and len(segment_points) >= 2
                 ):
                     top_key = ("manual", mseg_idx, h, "top")  # placeholder
-                # En lugar de reconstruir por key complejo, reusamos tracks ya calculados
-                # a partir de _get_edit_points_by_key, que hoy usa (ifeat_idx,h_idx,kind).
-                # Para manuales creamos tracks con h_idx=mseg_idx y ifeat_idx=mseg_idx en build.
+                # En lugar de reconstruir por key complejo, reusamos
+                # tracks ya calculados
+                # a partir de _get_edit_points_by_key, que hoy usa
+                # (ifeat_idx,h_idx,kind).
+                # Para manuales creamos tracks con h_idx=mseg_idx y
+                # ifeat_idx=mseg_idx en build.
                 # Como _get_edit_points_by_key no distingue 'source', mapear:
                 top_key = (mseg_idx, mseg_idx, "top")
                 bottom_key = (mseg_idx, mseg_idx, "bottom")
-                # Nota: si por cualquier razón no existen claves, se dibuja con valores actuales (h.top/h.bottom).
+                # Nota: si por cualquier razón no existen claves, se
+                # dibuja con valores actuales (h.top/h.bottom).
 
                 if edit_points_by_key is not None:
                     top_pts = edit_points_by_key.get(top_key)
@@ -1243,13 +1271,16 @@ class DEMProfileCanvas(QWidget):
                     10,
                 )
                 painter.setPen(QColor(60, 60, 60, 200))
-                painter.drawText(thickness_rect, Qt.AlignmentFlag.AlignCenter, f"{thickness_m:.2f} m")
+                painter.drawText(
+                    thickness_rect, Qt.AlignmentFlag.AlignCenter, f"{thickness_m:.2f} m"
+                )
 
                 painter.restore()
 
                 painter.save()
                 painter.setClipRect(draw_left, draw_top, draw_width, draw_height)
-                # Usar el color original del horizonte (sin oscurecer) para mejor visibilidad
+                # Usar el color original del horizonte (sin oscurecer)
+                # para mejor visibilidad
                 painter.setPen(QPen(color, 1.0))
                 painter.setBrush(Qt.BrushStyle.NoBrush)
                 painter.drawPath(horizon_path)
@@ -1423,7 +1454,12 @@ class DEMProfileCanvas(QWidget):
         except Exception:
             info_text = "Perfil DEM"
         painter.drawText(
-            draw_left, 5, draw_width, 20, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, info_text
+            draw_left,
+            5,
+            draw_width,
+            20,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+            info_text,
         )
 
 
@@ -1483,8 +1519,7 @@ class DEMProfilePanel(QWidget):
         )
         self.draw_profile_btn.setCheckable(True)
         self.draw_profile_btn.setFixedSize(130, 28)
-        self.draw_profile_btn.setStyleSheet(
-            """
+        self.draw_profile_btn.setStyleSheet("""
             QPushButton {
                 background-color: #e67e22;
                 color: white;
@@ -1500,8 +1535,7 @@ class DEMProfilePanel(QWidget):
             QPushButton:checked {
                 background-color: #c0392b;
             }
-        """
-        )
+        """)
         self.draw_profile_btn.clicked.connect(self.on_draw_profile_clicked)
         control_layout.addWidget(self.draw_profile_btn)
 
@@ -1551,7 +1585,8 @@ class DEMProfilePanel(QWidget):
         self.apply_dem_to_profile_btn.setEnabled(False)
         self.apply_dem_to_profile_btn.setFixedSize(140, 28)
         self.apply_dem_to_profile_btn.setToolTip(
-            "Convierte los cambios hechos en el perfil DEM (arrastre) a top/bottom del horizonte y guarda en la entidad seleccionada."
+            "Convierte los cambios hechos en el perfil DEM (arrastre) a top/bottom del "
+            "horizonte y guarda en la entidad seleccionada."
         )
         self.apply_dem_to_profile_btn.clicked.connect(self.apply_dem_changes_to_profile)
         control_layout.addWidget(self.apply_dem_to_profile_btn)
@@ -1760,7 +1795,8 @@ class DEMProfilePanel(QWidget):
                     print("=" * 60)
             else:
                 self.status_label.setText(
-                    "No se pudo generar el perfil. Verifique que el DEM y la línea se superpongan."
+                    "No se pudo generar el perfil. Verifique que el DEM y la línea se "
+                    "superpongan."
                 )
 
         self.draw_profile_btn.blockSignals(True)
@@ -1847,7 +1883,8 @@ class DEMProfilePanel(QWidget):
             QMessageBox.critical(self, "Error", f"No se pudo asignar material: {e}")
 
     def apply_dem_changes_to_profile(self):
-        # Persistir cambios desde el canvas DEM a la entidad seleccionada (igual que edafológico)
+        # Persistir cambios desde el canvas DEM a la entidad seleccionada
+        # (igual que edafológico)
         try:
             plugin = self.plugin_instance
             panel = getattr(plugin, "panel", None)
@@ -1867,22 +1904,28 @@ class DEMProfilePanel(QWidget):
                 QMessageBox.warning(
                     self,
                     "Sin cambios",
-                    "Genere un perfil DEM y active la edición de horizontes antes de aplicar.",
+                    "Genere un perfil DEM y active la edición de horizontes antes de "
+                    "aplicar.",
                 )
                 return
 
-            # Requiere que exista una correspondencia por índice de horizonte en panel.horizons.
+            # Requiere que exista una correspondencia por índice de
+            # horizonte en panel.horizons.
             if not panel.horizons:
                 QMessageBox.warning(
                     self,
                     "Sin horizontes",
-                    "La entidad seleccionada no tiene horizontes cargados. Añada/Genere un perfil edafológico primero o aplique una plantilla.",
+                    "La entidad seleccionada no tiene horizontes cargados. "
+                    "Añada/Genere un perfil edafológico primero o aplique una "
+                    "plantilla.",
                 )
                 return
 
             # Convertir tracks editados (elevaciones) a top/bottom cm promedio.
-            # Nota: el canvas usa (ifeat_idx,h_idx,kind). Para compatibilidad con formato actual,
-            # mapeamos por índice de horizonte (h_idx) y promediamos top/bottom editados a lo largo del tramo.
+            # Nota: el canvas usa (ifeat_idx,h_idx,kind). Para
+            # compatibilidad con formato actual,
+            # mapeamos por índice de horizonte (h_idx) y promediamos
+            # top/bottom editados a lo largo del tramo.
             edit_points_by_key = (
                 self.canvas._get_edit_points_by_key()
                 if self.canvas.edit_enabled
@@ -1895,10 +1938,14 @@ class DEMProfilePanel(QWidget):
                 return
 
             updated_horizons = []
-            # Para cada horizonte en el panel, usar el track (kind) del primer ifeat_idx existente.
+            # Para cada horizonte en el panel, usar el track (kind) del
+            # primer ifeat_idx existente.
             # Tomamos el mínimo ifeat_idx con datos para robustez.
-            # Esto asume que la edición fue realizada sobre el mismo conjunto de horizontes que está en panel.
-            # (Si el perfil DEM corta múltiples entidades intersectadas, pero tú guardas solo la seleccionada, este mapeo se conserva por índice.)
+            # Esto asume que la edición fue realizada sobre el mismo
+            # conjunto de horizontes que está en panel.
+            # (Si el perfil DEM corta múltiples entidades intersectadas,
+            # pero tú guardas solo la seleccionada, este mapeo se conserva
+            # por índice.)
             available_ifeat = sorted(
                 {k[0] for k in edit_points_by_key.keys() if k[2] in ("top", "bottom")}
             )
@@ -1907,7 +1954,8 @@ class DEMProfilePanel(QWidget):
                 return
             ifeat_use = available_ifeat[0]
 
-            # Para convertir elevación de horizonte -> profundidades cm, necesitamos elevación superficial del tramo.
+            # Para convertir elevación de horizonte -> profundidades cm,
+            # necesitamos elevación superficial del tramo.
             # En el engine, la profundidad se calculó como:
             #   top_depth = point.elevation - horizon.bottom
             #   bottom_depth = point.elevation - horizon.top
@@ -1916,16 +1964,18 @@ class DEMProfilePanel(QWidget):
             #   horizon.top = point.elevation - bottom_depth_cm/100
             # Pero aquí tenemos top/bottom editados en elevación del horizonte.
             # Entonces:
-            #   top_depth = point.elev - top_horizon_depth_elev? (en canvas usamos h_top_elev, h_bottom_elev como elevaciones reales de top/bottom)
+            #   top_depth = point.elev - top_horizon_depth_elev? (en
+            # canvas usamos h_top_elev, h_bottom_elev como elevaciones
+            # reales de top/bottom)
             # Y el panel almacena top/bottom profundidades positivas en cm.
             # Profundidad(cm) = (surface_elev - horizon_elev)*100.
             # Usamos superficie promedio sobre los puntos del tramo para cada h.
-            # Para eso, reconstruimos superficie promedio usando profile_data y la malla (track points 'd').
+            # Para eso, reconstruimos superficie promedio usando
+            # profile_data y la malla (track points 'd').
 
             prof = self.canvas.profile_data
-            surf_elev_min = prof.min_elevation
-            surf_elev_max = prof.max_elevation
-            # Ajuste conservador: para el promedio de superficie por el tramo, usamos elevación promedio de profile_data.points.
+            # Ajuste conservador: para el promedio de superficie por el
+            # tramo, usamos elevación promedio de profile_data.points.
             if not getattr(prof, "points", None) or len(prof.points) == 0:
                 QMessageBox.warning(self, "Error", "Perfil DEM sin puntos.")
                 return
@@ -1946,7 +1996,8 @@ class DEMProfilePanel(QWidget):
                 avg_top_elev = sum(e for _, e in top_pts) / len(top_pts)
                 avg_bottom_elev = sum(e for _, e in bottom_pts) / len(bottom_pts)
 
-                # Convertir a profundidades cm: depth = (surface_elev - horizon_elev)*100
+                # Convertir a profundidades cm: depth = (surface_elev
+                # - horizon_elev)*100
                 top_depth_cm = (surf_avg - avg_top_elev) * 100.0
                 bottom_depth_cm = (surf_avg - avg_bottom_elev) * 100.0
 
@@ -1974,7 +2025,8 @@ class DEMProfilePanel(QWidget):
 
             profile_id = panel.profile_id_edit.text().strip()
             description = panel.profile_desc_edit.toPlainText().strip()
-            # Guardar también cells (grilla de materiales) independientemente del perfil edafológico.
+            # Guardar también cells (grilla de materiales)
+            # independientemente del perfil edafológico.
             self.cells = getattr(self.canvas, "cells", None) or []
             success = HorizonManager.save_profile_data(
                 panel.current_feature,
@@ -1988,7 +2040,8 @@ class DEMProfilePanel(QWidget):
                 QMessageBox.critical(
                     self,
                     "Error",
-                    "No se pudo guardar el perfil actualizado en la entidad seleccionada.",
+                    "No se pudo guardar el perfil actualizado en la entidad "
+                    "seleccionada.",
                 )
                 return
 

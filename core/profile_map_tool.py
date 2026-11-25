@@ -7,14 +7,10 @@ Al finalizar (doble clic / clic derecho), se activa el motor DEM.
 
 from qgis.gui import QgsMapTool
 from qgis.core import (
-    QgsPointXY,
-    QgsGeometry,
-    QgsProject,
-    QgsVectorLayer,
     QgsRasterLayer,
 )
 from qgis.PyQt.QtCore import pyqtSignal, Qt, QTimer
-from qgis.PyQt.QtGui import QColor, QPen, QPainter
+from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import (
     QMessageBox,
     QApplication,
@@ -48,7 +44,8 @@ class ProfileMapTool(QgsMapTool):
 
         self.setCursor(Qt.CursorShape.CrossCursor)
 
-        # Bandera para evitar recursión de paint events durante actualización de rubber bands
+        # Bandera para evitar recursión de paint events durante actualización
+        # de rubber bands
         self._updating_rubber_band = False
 
     def set_raster_layer(self, layer):
@@ -151,7 +148,9 @@ class ProfileMapTool(QgsMapTool):
         msg.setText(message)
         if detailed_text:
             msg.setDetailedText(detailed_text)
-        msg.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Help)
+        msg.setStandardButtons(
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Help
+        )
         result = msg.exec()
 
         if result == QMessageBox.StandardButton.Help and detailed_text:
@@ -199,7 +198,7 @@ class ProfileMapTool(QgsMapTool):
 
         profile_data = None
         try:
-            from .dem_profile_engine import DEMProfileEngine, DEMProfileData
+            from .dem_profile_engine import DEMProfileEngine
 
             valid_vector_layers = self._get_valid_vector_layers()
             if not valid_vector_layers:

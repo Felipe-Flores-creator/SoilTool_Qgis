@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import tempfile
-from qgis.PyQt.QtCore import Qt, QSize
+from qgis.PyQt.QtCore import Qt
 from qgis.core import (
     QgsProject,
     QgsPrintLayout,
@@ -29,7 +29,7 @@ class ReportGenerator:
 
         try:
             from qgis.core import QgsLayoutItemPage
-            
+
             project = QgsProject.instance()
             layout = QgsPrintLayout(project)
             layout.initializeDefaults()
@@ -46,13 +46,16 @@ class ReportGenerator:
                 # Barra decorativa superior
                 rect = QgsLayoutItemShape(layout_obj)
                 rect.setShapeType(QgsLayoutItemShape.Rectangle)
-                rect.attemptMove(QgsLayoutPoint(0, 0, QgsUnitTypes.LayoutMillimeters), True, False, page_idx)
+                rect.attemptMove(
+                    QgsLayoutPoint(0, 0, QgsUnitTypes.LayoutMillimeters),
+                    True,
+                    False,
+                    page_idx,
+                )
                 rect.attemptResize(
                     QgsLayoutSize(page_width, 25, QgsUnitTypes.LayoutMillimeters)
                 )
-                rect.setSymbol(
-                    QgsStyle.defaultStyle().symbol("simple_fill")
-                )
+                rect.setSymbol(QgsStyle.defaultStyle().symbol("simple_fill"))
                 layout_obj.addLayoutItem(rect)
 
                 # Título en el encabezado
@@ -64,7 +67,10 @@ class ReportGenerator:
                 title.setHAlign(Qt.AlignmentFlag.AlignCenter)
                 title.setVAlign(Qt.AlignmentFlag.AlignVCenter)
                 title.attemptMove(
-                    QgsLayoutPoint(margin, 5, QgsUnitTypes.LayoutMillimeters), True, False, page_idx
+                    QgsLayoutPoint(margin, 5, QgsUnitTypes.LayoutMillimeters),
+                    True,
+                    False,
+                    page_idx,
                 )
                 title.attemptResize(
                     QgsLayoutSize(
@@ -91,11 +97,14 @@ class ReportGenerator:
 
                 profiles_found += 1
 
-                # Calcular altura requerida para este perfil (imagen: 70mm, texto: variable)
+                # Calcular altura requerida para este perfil (imagen:
+                # 70mm, texto: variable)
                 altura_imagen = 70
                 altura_texto = 22 + 6 + (len(horizons) * 5)
-                altura_perfil = 13 + max(altura_imagen, altura_texto) + 15 # 13 por título y línea, 15 por margen inferior
-                
+                altura_perfil = (
+                    13 + max(altura_imagen, altura_texto) + 15
+                )  # 13 por título y línea, 15 por margen inferior
+
                 # Verificar espacio en página (si el perfil no cabe, saltar página)
                 if y_pos + altura_perfil > 275:
                     page = QgsLayoutItemPage(layout)
@@ -104,19 +113,26 @@ class ReportGenerator:
                     current_page += 1
                     y_pos = 15
                     y_pos = add_header(
-                        layout, y_pos, f"INFORME TÉCNICO: {layer.name().upper()} (Cont.)", current_page
+                        layout,
+                        y_pos,
+                        f"INFORME TÉCNICO: {layer.name().upper()} (Cont.)",
+                        current_page,
                     )
 
                 # Título del Perfil con línea inferior
                 p_title = QgsLayoutItemLabel(layout)
                 p_title.setText(
-                    f"PERFIL: {profile_id if profile_id != -1 else f'FID {feature.id()}'}"
+                    "PERFIL: "
+                    + (str(profile_id) if profile_id != -1 else f"FID {feature.id()}")
                 )
                 f_p = p_title.font()
                 f_p.setBold(True)
                 p_title.setFont(f_p)
                 p_title.attemptMove(
-                    QgsLayoutPoint(margin, y_pos, QgsUnitTypes.LayoutMillimeters), True, False, current_page
+                    QgsLayoutPoint(margin, y_pos, QgsUnitTypes.LayoutMillimeters),
+                    True,
+                    False,
+                    current_page,
                 )
                 p_title.attemptResize(
                     QgsLayoutSize(
@@ -129,7 +145,10 @@ class ReportGenerator:
                 line = QgsLayoutItemShape(layout)
                 line.setShapeType(QgsLayoutItemShape.Rectangle)
                 line.attemptMove(
-                    QgsLayoutPoint(margin, y_pos, QgsUnitTypes.LayoutMillimeters), True, False, current_page
+                    QgsLayoutPoint(margin, y_pos, QgsUnitTypes.LayoutMillimeters),
+                    True,
+                    False,
+                    current_page,
                 )
                 line.attemptResize(
                     QgsLayoutSize(
@@ -151,7 +170,10 @@ class ReportGenerator:
                     picture.setPicturePath(img_path)
                     picture.setResizeMode(QgsLayoutItemPicture.Zoom)
                     picture.attemptMove(
-                        QgsLayoutPoint(margin, y_pos, QgsUnitTypes.LayoutMillimeters), True, False, current_page
+                        QgsLayoutPoint(margin, y_pos, QgsUnitTypes.LayoutMillimeters),
+                        True,
+                        False,
+                        current_page,
                     )
                     picture.attemptResize(
                         QgsLayoutSize(45, 70, QgsUnitTypes.LayoutMillimeters)
@@ -163,10 +185,14 @@ class ReportGenerator:
 
                 desc_label = QgsLayoutItemLabel(layout)
                 desc_label.setText(
-                    f"Descripción:\n{description or 'Sin descripción técnica registrada.'}"
+                    "Descripción:\n"
+                    + (description or "Sin descripción técnica registrada.")
                 )
                 desc_label.attemptMove(
-                    QgsLayoutPoint(info_x, y_pos, QgsUnitTypes.LayoutMillimeters), True, False, current_page
+                    QgsLayoutPoint(info_x, y_pos, QgsUnitTypes.LayoutMillimeters),
+                    True,
+                    False,
+                    current_page,
                 )
                 desc_label.attemptResize(
                     QgsLayoutSize(
@@ -184,7 +210,10 @@ class ReportGenerator:
                 f_th.setBold(True)
                 table_header.setFont(f_th)
                 table_header.attemptMove(
-                    QgsLayoutPoint(info_x, y_pos, QgsUnitTypes.LayoutMillimeters), True, False, current_page
+                    QgsLayoutPoint(info_x, y_pos, QgsUnitTypes.LayoutMillimeters),
+                    True,
+                    False,
+                    current_page,
                 )
                 table_header.attemptResize(
                     QgsLayoutSize(
@@ -201,7 +230,10 @@ class ReportGenerator:
                         f"{h.name} | {h.top:4.1f} | {h.bottom:4.1f} | {h.texture}"
                     )
                     h_row.attemptMove(
-                        QgsLayoutPoint(info_x, y_pos, QgsUnitTypes.LayoutMillimeters), True, False, current_page
+                        QgsLayoutPoint(info_x, y_pos, QgsUnitTypes.LayoutMillimeters),
+                        True,
+                        False,
+                        current_page,
                     )
                     h_row.attemptResize(
                         QgsLayoutSize(
@@ -213,7 +245,8 @@ class ReportGenerator:
                     layout.addLayoutItem(h_row)
                     y_pos += 5
 
-                # Ajustar y_pos para el siguiente perfil (evitar superposición si el texto es corto)
+                # Ajustar y_pos para el siguiente perfil (evitar
+                # superposición si el texto es corto)
                 y_pos_imagen = y_pos_elementos + 70
                 y_pos = max(y_pos, y_pos_imagen) + 15  # Espacio entre perfiles
 
@@ -222,18 +255,25 @@ class ReportGenerator:
 
             # Pie de página (Fecha) en todas las páginas generadas
             from datetime import datetime
-            
+
             for p_idx in range(current_page + 1):
                 footer = QgsLayoutItemLabel(layout)
                 footer.setText(
-                    f"Generado automáticamente por SoilTool - {datetime.now().strftime('%d/%m/%Y %H:%M')} - Página {p_idx + 1} de {current_page + 1}"
+                    "Generado automáticamente por SoilTool - "
+                    f"{datetime.now().strftime('%d/%m/%Y %H:%M')} - Página {p_idx + 1} "
+                    f"de {current_page + 1}"
                 )
                 f_foot = footer.font()
                 f_foot.setItalic(True)
                 footer.setFont(f_foot)
                 footer.setHAlign(Qt.AlignmentFlag.AlignRight)
                 footer.attemptMove(
-                    QgsLayoutPoint(margin, page_height - 15, QgsUnitTypes.LayoutMillimeters), True, False, p_idx
+                    QgsLayoutPoint(
+                        margin, page_height - 15, QgsUnitTypes.LayoutMillimeters
+                    ),
+                    True,
+                    False,
+                    p_idx,
                 )
                 footer.attemptResize(
                     QgsLayoutSize(
@@ -251,7 +291,7 @@ class ReportGenerator:
             for f in os.listdir(temp_dir):
                 try:
                     os.remove(os.path.join(temp_dir, f))
-                except:
+                except OSError:
                     pass
             os.rmdir(temp_dir)
 

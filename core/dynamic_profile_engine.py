@@ -11,19 +11,13 @@ Versión optimizada con:
 - Skip de horizontes si el feature repite
 """
 
-import math
 import numpy as np
 from qgis.core import (
     QgsProject,
-    QgsPointXY,
     QgsGeometry,
     QgsCoordinateTransform,
-    QgsCoordinateReferenceSystem,
-    QgsRasterDataProvider,
     QgsFeatureRequest,
     QgsRectangle,
-    QgsRasterLayer,
-    QgsVectorLayer,
     QgsSpatialIndex,
 )
 from .horizon_manager import HorizonManager
@@ -83,7 +77,8 @@ class DynamicProfileEngine:
         if spatial_index is None:
             spatial_index = QgsSpatialIndex(soils_layer.getFeatures())
 
-        # Buscar los features más cercanos al punto (buffer mucho menor ~0.00001 grados ~1m)
+        # Buscar los features más cercanos al punto (buffer mucho menor
+        # ~0.00001 grados ~1m)
         pt_geom = QgsGeometry.fromPointXY(point_soils)
         nearest_ids = spatial_index.nearestNeighbor(point_soils, 5)  # top 5 candidatos
 
@@ -203,7 +198,8 @@ class DynamicProfileEngine:
                 except Exception:
                     pt_soils = map_pt
 
-                # Búsqueda rápida: si estamos en el mismo feature que el punto anterior, reusar
+                # Búsqueda rápida: si estamos en el mismo feature que
+                # el punto anterior, reusar
                 # (los puntos consecutivos suelen caer en el mismo polígono)
                 feat = None
                 if last_feat_id is not None:

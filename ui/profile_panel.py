@@ -12,7 +12,6 @@ from qgis.PyQt.QtWidgets import (
     QListWidgetItem,
     QLabel,
     QMessageBox,
-    QSplitter,
     QFrame,
     QScrollArea,
     QLineEdit,
@@ -30,7 +29,6 @@ from qgis.core import QgsMapLayerProxyModel
 from .profile_canvas import EdafoCanvas
 from .horizon_dialog import HorizonDialog
 from ..core.horizon_manager import HorizonManager
-from ..core.profile_engine import HorizonData
 from ..core.report_generator import ReportGenerator
 
 
@@ -59,7 +57,7 @@ class ExplorerListWidget(QListWidget):
                     panel.load_explorer_features()
             elif not is_visible:
                 self._last_visible = False
-        except:
+        except Exception:
             pass
 
     def _find_parent_panel(self):
@@ -73,7 +71,7 @@ class ExplorerListWidget(QListWidget):
 
 
 class ExplorerDockEventFilter(QObject):
-    """Filtro de evento personalizado para detectar cambios en el dock del explorador."""
+    """Filtro de eventos para detectar cambios en el dock del explorador."""
 
     def __init__(self, panel):
         super().__init__(panel)
@@ -90,7 +88,7 @@ class ExplorerDockEventFilter(QObject):
                     try:
                         if self.panel.current_layer:
                             self.panel.load_explorer_features()
-                    except:
+                    except Exception:
                         pass
         elif event.type() == QEvent.Type.Hide:
             self.last_visible = False
@@ -112,7 +110,8 @@ class HorizonListItem(QListWidgetItem):
         """Actualiza el texto del item."""
         thickness = self.horizon.bottom - self.horizon.top
         self.setText(
-            f"{self.horizon.name} | {self.horizon.top:.1f} - {self.horizon.bottom:.1f} cm "
+            f"{self.horizon.name} | {self.horizon.top:.1f} - {self.horizon.bottom:.1f} "
+            "cm "
             f"({thickness:.1f} cm) | {self.horizon.texture}"
         )
 
@@ -120,7 +119,6 @@ class HorizonListItem(QListWidgetItem):
         """Actualiza el color de fondo del item."""
         # Crear un gradiente sutil para el fondo
         color = self.horizon.color
-        lighter_color = color.lighter(120)
         self.setBackground(color)
         self.setForeground(
             QColor("white") if color.lightness() < 120 else QColor("black")
@@ -146,7 +144,8 @@ class ProfilePanel(QWidget):
         self.dock_canvas = None
         self.dock_explorer = None
         self.dock_dem_profile = None
-        # Referencia a la instancia principal del plugin (se asignará desde edafo_interact.py)
+        # Referencia a la instancia principal del plugin (se asignará desde
+        # edafo_interact.py)
         self.plugin_instance = None
 
         self.setup_ui()
@@ -203,7 +202,8 @@ class ProfilePanel(QWidget):
         select_map_layout = QHBoxLayout()
         import os
 
-        # Usa el ícono existente (no se crea un nuevo archivo) para mantener la funcionalidad
+        # Usa el ícono existente (no se crea un nuevo archivo) para mantener
+        # la funcionalidad
         # del botón sin modificar la lógica del tool.
         crosshair_path = os.path.join(
             os.path.dirname(os.path.dirname(__file__)), "resources", "crosshair.svg"
@@ -212,11 +212,11 @@ class ProfilePanel(QWidget):
         self.select_map_button.setIcon(QIcon(crosshair_path))
         self.select_map_button.setIconSize(QSize(16, 16))
         self.select_map_button.setToolTip(
-            "Seleccionar Entidad en Mapa\nHaga click para activar el seleccionador y luego click en la entidad del mapa"
+            "Seleccionar Entidad en Mapa\nHaga click para activar el seleccionador y "
+            "luego click en la entidad del mapa"
         )
         self.select_map_button.setFixedSize(30, 30)
-        self.select_map_button.setStyleSheet(
-            """
+        self.select_map_button.setStyleSheet("""
             QPushButton {
                 background-color: #3498db;
                 color: white;
@@ -230,8 +230,7 @@ class ProfilePanel(QWidget):
             QPushButton:checked {
                 background-color: #e74c3c;
             }
-        """
-        )
+        """)
         self.select_map_button.setCheckable(True)
         self.select_map_button.clicked.connect(self.on_select_map_clicked)
         select_map_layout.addWidget(self.select_map_button)
@@ -319,8 +318,7 @@ class ProfilePanel(QWidget):
         # Botón de Guardado Explícito (Prioridad según requerimiento)
         self.save_profile_button = QPushButton("Guardar Perfil")
         self.save_profile_button.setFixedHeight(31)
-        self.save_profile_button.setStyleSheet(
-            """
+        self.save_profile_button.setStyleSheet("""
             QPushButton {
                 background-color: #27ae60;
                 color: white;
@@ -336,8 +334,7 @@ class ProfilePanel(QWidget):
             QPushButton:disabled {
                 background-color: #95a5a6;
             }
-        """
-        )
+        """)
         self.save_profile_button.clicked.connect(self.save_current_profile)
         editor_layout.addWidget(self.save_profile_button)
 
@@ -367,7 +364,8 @@ class ProfilePanel(QWidget):
         self.auto_chain_check = QCheckBox("Auto-encadenar profundidades")
         self.auto_chain_check.setChecked(True)
         self.auto_chain_check.setToolTip(
-            "Ajusta automáticamente las profundidades para que no haya huecos ni solapamientos."
+            "Ajusta automáticamente las profundidades para que no haya huecos ni "
+            "solapamientos."
         )
 
         # Control de visualización de paneles adicionales
@@ -481,7 +479,8 @@ class ProfilePanel(QWidget):
     def _on_feature_selected(self, data):
         """
         Slot para manejar la selección de una entidad desde la herramienta de mapa.
-        Este método se usa cuando el botón de selección se usa sin la integración completa.
+        Este método se usa cuando el botón de selección se usa sin la
+        integración completa.
         """
         feature = data["feature"]
         layer = data["layer"]
@@ -496,7 +495,8 @@ class ProfilePanel(QWidget):
             layer: QgsVectorLayer donde está el feature
         """
         if feature and layer:
-            # Asegurar que el objeto feature tenga acceso a todos los campos actuales de la capa
+            # Asegurar que el objeto feature tenga acceso a todos los
+            # campos actuales de la capa
             feature.setFields(layer.fields())
 
         self.current_layer = layer
@@ -510,7 +510,8 @@ class ProfilePanel(QWidget):
         # Actualizar info de entidad
         if feature and feature.isValid():
             # Re-cargar el feature FRESCO desde la capa por su FID para garantizar
-            # que los atributos reflejan lo guardado en disco (no la copia en memoria del evento)
+            # que los atributos reflejan lo guardado en disco (no la copia
+            # en memoria del evento)
             fresh_feature = layer.getFeature(feature.id())
             if fresh_feature.isValid():
                 self.current_feature = fresh_feature
@@ -557,7 +558,9 @@ class ProfilePanel(QWidget):
             self.dock_dem_profile.setVisible(checked)
 
     def on_canvas_visibility_changed(self, visible):
-        """Actualiza el checkbox del Lienzo 2D cuando la visibilidad del dock cambia externamente."""
+        """Actualiza el checkbox del Lienzo 2D cuando la visibilidad del dock cambia
+        externamente.
+        """
         self.show_canvas_check.blockSignals(True)
         self.show_canvas_check.setChecked(visible)
         self.show_canvas_check.blockSignals(False)
@@ -566,7 +569,9 @@ class ProfilePanel(QWidget):
         QTimer.singleShot(0, self._refresh_tabified_docks)
 
     def on_explorer_visibility_changed(self, visible):
-        """Actualiza el checkbox del Explorador cuando la visibilidad del dock cambia externamente."""
+        """Actualiza el checkbox del Explorador cuando la visibilidad del dock cambia
+        externamente.
+        """
         self.show_explorer_check.blockSignals(True)
         self.show_explorer_check.setChecked(visible)
         self.show_explorer_check.blockSignals(False)
@@ -578,13 +583,15 @@ class ProfilePanel(QWidget):
             self.load_explorer_features()
 
     def on_dem_profile_visibility_changed(self, visible):
-        """Actualiza el checkbox del Perfil Topográfico cuando la visibilidad del dock cambia externamente."""
+        """Actualiza el checkbox del Perfil Topográfico cuando la visibilidad del dock
+        cambia externamente.
+        """
         self.show_dem_profile_check.blockSignals(True)
         self.show_dem_profile_check.setChecked(visible)
         self.show_dem_profile_check.blockSignals(False)
 
     def _refresh_tabified_docks(self):
-        """Asegura que los docks del editor, canvas y explorador se tabifiquen sólo cuando corresponda."""
+        """Tabifica editor, canvas y explorador sólo cuando corresponde."""
         try:
             if not self.dock_editor:
                 return
@@ -841,7 +848,8 @@ class ProfilePanel(QWidget):
             )
             return
         self.horizons = template_horizons
-        # ELIMINADO GUARDADO AUTOMÁTICO - El usuario debe presionar "Guardar Perfil" para persistir
+        # ELIMINADO GUARDADO AUTOMÁTICO - El usuario debe presionar "Guardar
+        # Perfil" para persistir
         self.update_ui()
         self.horizonsChanged.emit(self.horizons)
         self.load_explorer_features()
@@ -876,7 +884,8 @@ class ProfilePanel(QWidget):
             QMessageBox.information(
                 self,
                 "Perfil Guardado",
-                f"El perfil ha sido guardado exitosamente para la entidad ID: {self.current_feature.id()}.",
+                "El perfil ha sido guardado exitosamente para la entidad ID: "
+                f"{self.current_feature.id()}.",
             )
             # Actualizar la interfaz y el explorador
             self.update_ui()
@@ -887,7 +896,8 @@ class ProfilePanel(QWidget):
             QMessageBox.critical(
                 self,
                 "Error",
-                "No se pudo guardar el perfil en la entidad. Verifique si la capa es editable o si hay restricciones de permisos.",
+                "No se pudo guardar el perfil en la entidad. Verifique si la capa es "
+                "editable o si hay restricciones de permisos.",
             )
 
     def on_layer_combo_changed(self, layer):
@@ -897,14 +907,16 @@ class ProfilePanel(QWidget):
         self.current_feature = None
         self.current_layer = layer
 
-        # Resetear horizontes a una lista vacía al cambiar de capa (sin selección de punto)
+        # Resetear horizontes a una lista vacía al cambiar de capa (sin
+        # selección de punto)
         # El usuario puede usar "Aplicar a Entidad" más tarde si hay una plantilla
         self.horizons = []
         self.profile_id_edit.setText("")
         self.profile_desc_edit.setPlainText("")
         self.update_ui()
 
-        # Requisito: Al elegir el archivo (capa), el plugin asegura que tenga el campo edafo_id
+        # Requisito: Al elegir el archivo (capa), el plugin asegura que tenga
+        # el campo edafo_id
         if layer:
             HorizonManager.ensure_id_field(layer)
 
@@ -991,7 +1003,7 @@ class ProfilePanel(QWidget):
                 # iface.mapCanvas().refresh()
 
     def refresh(self):
-        """Refresca los horizontes desde el feature (útil después de cambios externos)."""
+        """Refresca los horizontes desde el feature (tras cambios externos)."""
         if self.current_feature and self.current_layer:
             profile_id, description, self.horizons = HorizonManager.get_profile_data(
                 self.current_feature, self.current_layer

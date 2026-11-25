@@ -16,24 +16,31 @@ from qgis.PyQt.QtWidgets import (
     QDoubleSpinBox,
     QSizePolicy,
 )
-from qgis.PyQt.QtCore import Qt, pyqtSignal
+from qgis.PyQt.QtCore import Qt
 from qgis.gui import QgsMapLayerComboBox, QgsRubberBand
 from qgis.core import (
     QgsMapLayerProxyModel,
-    QgsProject,
     QgsGeometry,
     QgsPointXY,
-    QgsCoordinateTransform,
 )
 from qgis.PyQt.QtGui import QColor
 
 
 import matplotlib
-
-matplotlib.use("Qt5Agg")
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+import matplotlib.lines
+import matplotlib.patches as mpatches
 from matplotlib.figure import Figure
+
+try:  # matplotlib >= 3.5: backend Qt genérico (Qt5 en QGIS 3, Qt6 en QGIS 4)
+    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+    from matplotlib.backends.backend_qtagg import (
+        NavigationToolbar2QT as NavigationToolbar,
+    )
+except ImportError:  # matplotlib antiguo (QGIS 3 viejos)
+    from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+    from matplotlib.backends.backend_qt5agg import (
+        NavigationToolbar2QT as NavigationToolbar,
+    )
 
 from ..core.dynamic_profile_engine import DynamicProfileEngine
 
@@ -47,7 +54,9 @@ class DynamicProfileDock(QDockWidget):
         self.points_data = []
         self.line_geometry = None
         self.map_crs = None
-        self.setAllowedAreas(Qt.DockWidgetArea.TopDockWidgetArea | Qt.DockWidgetArea.BottomDockWidgetArea)
+        self.setAllowedAreas(
+            Qt.DockWidgetArea.TopDockWidgetArea | Qt.DockWidgetArea.BottomDockWidgetArea
+        )
         self.setMinimumHeight(280)
 
         # --- Marcadores espaciales en el mapa ---
@@ -116,7 +125,9 @@ class DynamicProfileDock(QDockWidget):
         # Canvas de Matplotlib
         self.figure = Figure(tight_layout=True)
         self.canvas = FigureCanvas(self.figure)
-        self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.canvas.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
         self.layout.addWidget(self.canvas, 1)
 
         # Barra de herramientas de Matplotlib
@@ -392,14 +403,14 @@ class DynamicProfileDock(QDockWidget):
         )
 
         # Graficar estratos edafológicos segmentados
-        # Para cada segmento entre i e i+1, dibujamos las capas edafológicas correspondientes
+        # Para cada segmento entre i e i+1, dibujamos las capas edafológicas
+        # correspondientes
         for idx in range(len(self.points_data) - 1):
             pt1 = self.points_data[idx]
             pt2 = self.points_data[idx + 1]
 
             # Escalar x_seg según la unidad
             x_seg = [pt1["distance"] * scale, pt2["distance"] * scale]
-            z_seg = [pt1["z"], pt2["z"]]
 
             horizons1 = pt1["horizons"] or []
             horizons2 = pt2["horizons"] or []
@@ -428,17 +439,14 @@ class DynamicProfileDock(QDockWidget):
 
                 # Obtener color y nombre para la leyenda
                 color = "#d2b48c"
-                label = "Estrato edafológico"
                 if h1:
                     color = (
                         h1.color.name() if hasattr(h1.color, "name") else str(h1.color)
                     )
-                    label = h1.name
                 elif h2:
                     color = (
                         h2.color.name() if hasattr(h2.color, "name") else str(h2.color)
                     )
-                    label = h2.name
 
                 # Relleno del estrato - borde con el color del estrato en lugar de negro
                 ax.fill_between(
@@ -460,13 +468,8 @@ class DynamicProfileDock(QDockWidget):
         ax.set_ylabel("Elevación (m s.n.m.)")
         ax.grid(True, linestyle="--", alpha=0.6)
 
-        # Leyenda única (sin duplicados)
-        handles, labels = ax.get_legend_handles_labels()
-        by_label = dict(zip(labels, handles))
-
-        # Agregar parches manuales a la leyenda para los horizontes edafológicos dibujados
-        import matplotlib.patches as mpatches
-
+        # Agregar parches manuales a la leyenda para los horizontes
+        # edafológicos dibujados
         seen_horizons = {}
         for pt in self.points_data:
             for h in pt["horizons"] or []:

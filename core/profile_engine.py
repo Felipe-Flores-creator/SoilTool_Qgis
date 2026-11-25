@@ -1,6 +1,5 @@
 import random
 from qgis.PyQt.QtCore import QPointF
-from qgis.PyQt.QtGui import QPolygonF
 
 
 class HorizonData:
@@ -26,7 +25,9 @@ class HorizonData:
         self.color = color  # QColor
         self.texture = texture
         self.boundary_type = boundary_type  # "abrupt", "clear", "gradual", "diffuse"
-        self.folding = folding  # Amplitud del plegamiento (positivo: hacia arriba, negativo: hacia abajo)
+        # Amplitud del plegamiento (positivo: hacia arriba, negativo: hacia
+        # abajo)
+        self.folding = folding
         self.fault_type = fault_type  # "none", "normal", "inverse"
         self.fault_displacement = (
             fault_displacement  # Desplazamiento de la falla en píxeles
@@ -41,7 +42,9 @@ class HorizonData:
 
 
 class ProfileGeometry:
-    """Generador de geometría orgánica para el perfil con soporte para plegamientos y fallas."""
+    """Generador de geometría orgánica para el perfil con soporte para plegamientos y
+    fallas.
+    """
 
     @staticmethod
     def generate_boundary(
@@ -54,7 +57,7 @@ class ProfileGeometry:
         fault_displacement=0,
         inclination=0,
     ):
-        """Genera una línea irregular con plegamiento, fallas geológicas e inclinación."""
+        """Genera una línea irregular con plegamiento, fallas e inclinación."""
         import math
 
         points = []
@@ -62,12 +65,15 @@ class ProfileGeometry:
         # Punto de fractura de la falla con inclinación (dip)
         center_x = width * 0.5
 
-        # Generador local de números aleatorios para evitar cambios en cada redibujado (paintEvent)
-        # Usamos la profundidad (y_coord) y round() para evitar inestabilidad por decimales flotantes
+        # Generador local de números aleatorios para evitar cambios en cada
+        # redibujado (paintEvent)
+        # Usamos la profundidad (y_coord) y round() para evitar inestabilidad
+        # por decimales flotantes
         seed_value = int(round(y_coord * 100)) if y_coord else 42
         rng = random.Random(seed_value)
 
-        # Inclinación: En una falla normal (\), el bloque colgado baja y el plano se inclina hacia él.
+        # Inclinación: En una falla normal (\), el bloque colgado baja y el
+        # plano se inclina hacia él.
         # En una inversa (/), el plano se inclina en dirección opuesta al empuje.
         if fault_type == "normal":
             # Inclinación hacia la derecha (el x aumenta con la profundidad)
@@ -96,7 +102,7 @@ class ProfileGeometry:
                         fault_y = fault_displacement
                     elif fault_type == "inverse":
                         fault_y = -fault_displacement
-                        
+
             # 4. Inclinación general del horizonte
             tilt_y = 0
             if inclination != 0:
@@ -104,4 +110,3 @@ class ProfileGeometry:
 
             points.append(QPointF(x, y_coord + noise + fold_y + fault_y + tilt_y))
         return points
-

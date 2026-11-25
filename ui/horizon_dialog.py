@@ -10,20 +10,18 @@ from qgis.PyQt.QtWidgets import (
     QFormLayout,
     QLabel,
     QLineEdit,
-    QSpinBox,
     QDoubleSpinBox,
     QComboBox,
     QColorDialog,
     QPushButton,
     QDialogButtonBox,
-    QMessageBox,
     QFileDialog,
     QScrollArea,
     QFrame,
     QWidget,
 )
-from qgis.PyQt.QtGui import QColor, QIntValidator
-from qgis.PyQt.QtCore import Qt, QTimer
+from qgis.PyQt.QtGui import QColor
+from qgis.PyQt.QtCore import QTimer
 
 from ..core.profile_engine import HorizonData
 from ..core.materials import (
@@ -56,7 +54,8 @@ class HorizonDialog(QDialog):
         self.setWindowTitle("Editar Horizonte" if self.horizon else "Nuevo Horizonte")
         self.setModal(True)
         self.setMinimumWidth(400)
-        # Tamaño inicial: al abrir, asegurar que el layout/scroll se "calcule" y se vea completo
+        # Tamaño inicial: al abrir, asegurar que el layout/scroll se "calcule"
+        # y se vea completo
         self.resize(420, 500)
         self.setSizeGripEnabled(True)
 
@@ -164,7 +163,8 @@ class HorizonDialog(QDialog):
         self.boundary_combo.addItems(["abrupt", "clear", "gradual", "diffuse"])
         self.boundary_combo.setCurrentText("abrupt")
         self.boundary_combo.setToolTip(
-            "abrupt: < 2.5 cm, clear: 2.5-7.5 cm, gradual: 7.5-12.5 cm, diffuse: > 12.5 cm"
+            "abrupt: < 2.5 cm, clear: 2.5-7.5 cm, gradual: 7.5-12.5 cm, diffuse: > "
+            "12.5 cm"
         )
         form_layout.addRow("Tipo de límite:", self.boundary_combo)
 
@@ -179,7 +179,8 @@ class HorizonDialog(QDialog):
         self.folding_spin.setSuffix(" px")
         self.folding_spin.setValue(0)
         self.folding_spin.setToolTip(
-            "Curvatura del estrato (positivo: hacia arriba/anticlinal, negativo: hacia abajo/sinclinal)"
+            "Curvatura del estrato (positivo: hacia arriba/anticlinal, negativo: hacia "
+            "abajo/sinclinal)"
         )
         form_layout.addRow("Plegamiento (Curva):", self.folding_spin)
 
@@ -202,7 +203,8 @@ class HorizonDialog(QDialog):
         self.inclination_spin.setSuffix(" °")
         self.inclination_spin.setValue(0)
         self.inclination_spin.setToolTip(
-            "Inclinación del horizonte (positivo: baja hacia la derecha, negativo: sube hacia la derecha)"
+            "Inclinación del horizonte (positivo: baja hacia la derecha, negativo: "
+            "sube hacia la derecha)"
         )
         form_layout.addRow("Inclinación:", self.inclination_spin)
 
@@ -210,7 +212,9 @@ class HorizonDialog(QDialog):
         layout.addWidget(scroll_area)
 
         # Botones
-        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
@@ -379,7 +383,8 @@ class HorizonDialog(QDialog):
     def accept(self):
         """Valida los datos antes de aceptar."""
         # Se han relajado las restricciones según solicitud del usuario.
-        # Solo aseguramos que el nombre no sea completamente nulo para evitar errores de visualización.
+        # Solo aseguramos que el nombre no sea completamente nulo para evitar
+        # errores de visualización.
         if not self.name_edit.text().strip():
             self.name_edit.setText(f"H {self.top_spin.value()}")
 

@@ -6,6 +6,7 @@ This file exists so `from .car_type import CarType` in
 `core/__init__.py` can import successfully.
 """
 
+
 class CarType:
     """Minimal placeholder for vehicle/car type representation."""
 

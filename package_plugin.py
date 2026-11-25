@@ -12,6 +12,7 @@ Estructura de carpetas:
 Uso:
     python package_plugin.py
 """
+
 import configparser
 import os
 import shutil
@@ -39,8 +40,16 @@ INCLUDE = [
 IGNORE_DIRS = {"__pycache__", ".git", ".venv", "venv", ".vscode", ".idea", "__MACOSX"}
 IGNORE_EXT = (".pyc", ".pyo", ".bak", ".zip", ".ipynb", ".log")
 
-REQUIRED_METADATA = ["name", "description", "about", "version", "qgisMinimumVersion",
-                     "author", "email", "repository"]
+REQUIRED_METADATA = [
+    "name",
+    "description",
+    "about",
+    "version",
+    "qgisMinimumVersion",
+    "author",
+    "email",
+    "repository",
+]
 
 
 def read_metadata():
@@ -67,8 +76,11 @@ def copy_clean(dest):
         if not os.path.exists(src):
             sys.exit(f"ERROR: no se encontró {item}")
         if os.path.isdir(src):
-            shutil.copytree(src, os.path.join(dest, item),
-                            ignore=lambda d, names: [n for n in names if ignored(n)])
+            shutil.copytree(
+                src,
+                os.path.join(dest, item),
+                ignore=lambda d, names: [n for n in names if ignored(n)],
+            )
         else:
             shutil.copy2(src, os.path.join(dest, item))
 
@@ -87,10 +99,13 @@ def make_zip(folder, zip_path):
 def validate_zip(zip_path):
     with zipfile.ZipFile(zip_path) as zf:
         names = zf.namelist()
-    problems = [n for n in names
-                if not n.startswith(PLUGIN_NAME + "/")
-                or any(part.startswith(".") or part in IGNORE_DIRS for part in n.split("/"))
-                or n.endswith((".pyc", ".pyo"))]
+    problems = [
+        n
+        for n in names
+        if not n.startswith(PLUGIN_NAME + "/")
+        or any(part.startswith(".") or part in IGNORE_DIRS for part in n.split("/"))
+        or n.endswith((".pyc", ".pyo"))
+    ]
     for required in ("__init__.py", "metadata.txt", "LICENSE"):
         if f"{PLUGIN_NAME}/{required}" not in names:
             problems.append(f"falta {required}")
@@ -113,8 +128,10 @@ def main():
     n = validate_zip(zip_path)
 
     print(f"Carpeta limpia : {plugin_dir}")
-    print(f"ZIP para QGIS  : {zip_path} ({n} archivos, "
-          f"{os.path.getsize(zip_path) / 1024:.1f} KB)")
+    print(
+        f"ZIP para QGIS  : {zip_path} ({n} archivos, "
+        f"{os.path.getsize(zip_path) / 1024:.1f} KB)"
+    )
     print("Listo para subir a https://plugins.qgis.org/plugins/add/")
 
 

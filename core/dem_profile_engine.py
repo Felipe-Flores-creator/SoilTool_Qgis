@@ -16,19 +16,13 @@ from qgis.core import (
     QgsRasterLayer,
     QgsGeometry,
     QgsPointXY,
-    QgsFeature,
     QgsVectorLayer,
     QgsProject,
     QgsRaster,
-    QgsRasterDataProvider,
     QgsRasterBandStats,
     QgsCoordinateTransform,
-    QgsCoordinateReferenceSystem,
-    QgsMapLayer,
     QgsRectangle,
 )
-from qgis.PyQt.QtCore import QPointF
-from qgis.PyQt.QtGui import QColor
 
 from .horizon_manager import HorizonManager
 from .profile_engine import HorizonData
@@ -595,7 +589,8 @@ class DEMProfileEngine:
                 "Muestreo DEM",
                 True,
                 f"{len(valid_points)}/{len(sampled_points)} pts "
-                f"Elev: {profile_data.min_elevation:.1f}-{profile_data.max_elevation:.1f}",
+                "Elev: "
+                f"{profile_data.min_elevation:.1f}-{profile_data.max_elevation:.1f}",
             )
         else:
             diagnostic.add_step(
@@ -616,7 +611,8 @@ class DEMProfileEngine:
 
             for vlayer in vector_layers:
                 # Nunca asumimos que "vector_layers" es solo vector.
-                # En tu caso llegó un QgsRasterLayer, causando AttributeError en fields().
+                # En tu caso llegó un QgsRasterLayer, causando
+                # AttributeError en fields().
                 try:
                     if (
                         not vlayer
@@ -659,10 +655,12 @@ class DEMProfileEngine:
                                     )
                                     intersected_feat.intersection_start = start_d
                                     intersected_feat.intersection_end = end_d
-                                    intersected_feat.surface_elevation_start = DEMProfileEngine.interpolate_elevation_at_distance(
+                                    interp = DEMProfileEngine
+                                    interp = interp.interpolate_elevation_at_distance
+                                    intersected_feat.surface_elevation_start = interp(
                                         valid_points, start_d
                                     )
-                                    intersected_feat.surface_elevation_end = DEMProfileEngine.interpolate_elevation_at_distance(
+                                    intersected_feat.surface_elevation_end = interp(
                                         valid_points, end_d
                                     )
                                     DEMProfileEngine._assign_horizons_to_points(
@@ -717,7 +715,8 @@ class DEMProfileEngine:
                 for horizon in intersected_feature.horizons:
                     # horizon.top / horizon.bottom están en cm.
                     # point.elevation está en metros.
-                    # Convertimos profundidad cm a metros para obtener elevación del horizonte.
+                    # Convertimos profundidad cm a metros para
+                    # obtener elevación del horizonte.
                     top_m = horizon.top / 100.0
                     bottom_m = horizon.bottom / 100.0
                     h_copy = HorizonData(

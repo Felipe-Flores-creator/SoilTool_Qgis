@@ -1,10 +1,9 @@
 import json
 import uuid
 from qgis.PyQt.QtGui import QColor
-from qgis.core import QgsProject, QgsField
+from qgis.core import QgsField
 from qgis.PyQt.QtCore import QVariant
 from .profile_engine import HorizonData
-from .materials import get_material_color, is_material_predefined
 
 import os
 
@@ -13,7 +12,9 @@ ID_FIELD_NAME = "edafo_id"
 
 
 class HorizonManager:
-    """Clase para gestionar el almacenamiento de perfiles en un archivo JSON externo (sidecar)."""
+    """Clase para gestionar el almacenamiento de perfiles en un archivo JSON externo
+    (sidecar).
+    """
 
     @staticmethod
     def get_storage_path(layer):
@@ -47,9 +48,9 @@ class HorizonManager:
         path = HorizonManager.get_storage_path(layer)
         if not path:
             return False
-        ## try, si hay un error me lo va a mostrar con el print
-        ## with open significa abrir el archivo con las siguientes instrucciones
-        ## json.dump se usa para guardar los datos en el archivo json
+        # try, si hay un error me lo va a mostrar con el print
+        # with open significa abrir el archivo con las siguientes instrucciones
+        # json.dump se usa para guardar los datos en el archivo json
 
         try:
             with open(path, "w", encoding="utf-8") as f:
@@ -59,7 +60,8 @@ class HorizonManager:
             print(f"Error escribiendo archivo de perfiles: {e}")
             return False
 
-    ## @staticmethod significa que la funcion se puede usar sin crear un objeto de la clase
+    # @staticmethod significa que la funcion se puede usar sin crear un objeto de
+    # la clase
 
     @staticmethod
     def ensure_id_field(layer):
@@ -172,8 +174,8 @@ class HorizonManager:
         _, _, horizons = HorizonManager.get_profile_data(feature, layer)
         return horizons
 
-    ##_,_, se usa cuando no se necesita una variable al momento de recuperar los datos
-    ## por ejemplo en esta linea
+    # _,_, se usa cuando no se necesita una variable al momento de recuperar los datos
+    # por ejemplo en esta linea
     @staticmethod
     def horizon_to_dict(horizon, h_id=None):
         """Serializa un objeto HorizonData a un diccionario JSON."""
@@ -302,7 +304,9 @@ class HorizonManager:
         if not horizons:
             return []
 
-        current_top = 0  # Siempre empezar desde 0 para que el primer horizonte comience en superficie
+        # Siempre empezar desde 0 para que el primer horizonte comience en
+        # superficie
+        current_top = 0
         for h in horizons:
             thickness = h.bottom - h.top
             h.top = current_top
@@ -321,7 +325,8 @@ class HorizonManager:
             if abs(curr.bottom - nxt.top) > 0.01:
                 return (
                     False,
-                    f"Existe un solapamiento o hueco entre '{curr.name}' y '{nxt.name}'.",
+                    f"Existe un solapamiento o hueco entre '{curr.name}' y "
+                    f"'{nxt.name}'.",
                 )
 
         return True, ""
